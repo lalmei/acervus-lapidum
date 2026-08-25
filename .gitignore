@@ -1,0 +1,16 @@
+.dotnet/
+.dotnet-home/
+.vintagestory/
+.venv/
+**/bin/
+**/obj/
+cache/
+.claude/
+dist/
+site/
+__pycache__/
+*.pyc
+.DS_Store
+*.user
+*.suo
+.env

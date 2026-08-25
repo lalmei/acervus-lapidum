@@ -1,0 +1,16 @@
+[project]
+name = "acervus-lapidum"
+version = "0.1.0"
+description = "Acervus Lapidum Vintage Story mod — rock pile geometry tools and documentation."
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+docs = [
+    "mkdocs-materialx==10.2.0",
+    "properdocs==1.6.7",
+]
+
+[tool.uv]
+default-groups = ["docs"]
+package = false
