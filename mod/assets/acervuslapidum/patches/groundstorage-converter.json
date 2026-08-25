@@ -1,0 +1,10 @@
+[
+  {
+    "op": "add",
+    "side": "Server",
+    "comment": "Vanilla stone piles migrate themselves into rock piles when their block entity loads. Ground storage holding anything else returns immediately and stays vanilla.",
+    "file": "game:blocktypes/groundstorage.json",
+    "path": "/entityBehaviors/-",
+    "value": { "name": "RockPileConverter" }
+  }
+]

@@ -1,0 +1,26 @@
+{
+	"code": "rockpile",
+	"class": "BlockRockPile",
+	"entityClass": "RockPile",
+	"behaviors": [
+		{ "name": "UnstableFalling", "properties": { "attachmentArea": { "x1": 0, "y1": 0, "z1": 0, "x2": 16, "y2": 0, "z2": 16 } } }
+	],
+	"attributes": {},
+	"shape": { "base": "game:block/basic/invisible" },
+	"sidesolid": { "all": false },
+	"sideopaque": { "all": false },
+	"faceCullMode": "NeverCull",
+	"blockmaterial": "Stone",
+	"creativeinventory": {},
+	"lightAbsorption": 0,
+	"resistance": 1.5,
+	"sounds": {
+		"place": "game:block/loosestone*",
+		"break": "game:block/loosestone*",
+		"hit": "game:block/loosestone*",
+		"walk": "game:walk/stone*"
+	},
+	"collisionbox": { "x1": 0.05, "y1": 0, "z1": 0.05, "x2": 0.95, "y2": 0.14, "z2": 0.95 },
+	"selectionbox": { "x1": 0.05, "y1": 0, "z1": 0.05, "x2": 0.95, "y2": 0.14, "z2": 0.95 },
+	"drops": []
+}

@@ -194,13 +194,21 @@ def build_neat(rng):
 
 
 def cairn_rings(segment):
-    """(count, radius) per layer for one cairn segment, narrowing as the column rises."""
+    """(count, radius) per layer for one cairn segment, narrowing as the column rises.
+
+    Each segment picks up where the one below it left off — 0.30 down to 0.20, then 0.20 down to
+    0.13, then 0.13 to the cap — so a column is one cone rather than three stacked drums.
+
+    That is why the higher segments hold fewer stones. A ring of radius r fits about
+    ``2*pi*r / 0.3125`` stones, so a narrow course physically cannot take 32 of them, and a block
+    only has room for eight 2px layers. Rather than fake it with overlap, a cairn crown simply
+    holds less — which is what a real one does, and keeps every stone in the pile a stone you can
+    see.
+    """
     profiles = [
-        ([7, 6, 5, 5, 4, 3, 2], 0.30, 0.12),
-        ([6, 5, 5, 4, 4, 4, 2, 2], 0.24, 0.09),
-        # Eight layers at most: a ninth would start at y = 1.0 and push stones through the
-        # ceiling into the block above, which is where the next segment lives.
-        ([5, 5, 4, 4, 4, 4, 3, 3], 0.18, 0.05),
+        ([6, 5, 5, 4, 4, 4, 4], 0.30, 0.20),
+        ([4, 4, 3, 3, 3, 3], 0.20, 0.13),
+        ([3, 3, 2, 2, 2], 0.13, 0.05),
     ]
     counts, outer, inner = profiles[min(segment, len(profiles) - 1)]
     layers = len(counts)
@@ -235,8 +243,8 @@ def build_cairn(rng, segment):
                     -7.0 * (radius / 0.30) + rng.uniform(-3.0, 3.0),
                 )
             )
-    if len(slots) != CAPACITY:
-        raise ValueError(f"cairn segment {segment} produced {len(slots)} slots, want {CAPACITY}")
+    if len(slots) > CAPACITY:
+        raise ValueError(f"cairn segment {segment} produced {len(slots)} slots, over the {CAPACITY} cap")
     return slots
 
 

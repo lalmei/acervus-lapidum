@@ -1,0 +1,37 @@
+[
+  {
+    "op": "add",
+    "side": "Server",
+    "comment": "Ahead of vanilla's GroundStorable, so a sneak-place builds an Acervus Lapidum pile. stone.json splits its behaviors by type, so every key needs its own insert.",
+    "file": "game:itemtypes/resource/stone.json",
+    "path": "/behaviorsByType/*/0",
+    "value": { "name": "RockPileable" }
+  },
+  {
+    "op": "add",
+    "side": "Server",
+    "file": "game:itemtypes/resource/stone.json",
+    "path": "/behaviorsByType/stone-chalk/0",
+    "value": { "name": "RockPileable" }
+  },
+  {
+    "op": "add",
+    "side": "Server",
+    "file": "game:itemtypes/resource/stone.json",
+    "path": "/behaviorsByType/stone-limestone/0",
+    "value": { "name": "RockPileable" }
+  },
+  {
+    "op": "add",
+    "side": "Server",
+    "comment": "The stone mesh has no ground storage transform of its own. Pin an identity one so BlockEntityDisplay hands the pile the shape exactly as authored — the generated layout config assumes that, see tools/rockpile_geometry.py.",
+    "file": "game:itemtypes/resource/stone.json",
+    "path": "/attributes/groundStorageTransform",
+    "value": {
+      "translation": { "x": 0, "y": 0, "z": 0 },
+      "rotation": { "x": 0, "y": 0, "z": 0 },
+      "origin": { "x": 0.5, "y": 0, "z": 0.5 },
+      "scale": 1
+    }
+  }
+]

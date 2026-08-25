@@ -50,11 +50,24 @@ class TestCommittedConfig(unittest.TestCase):
     def setUp(self):
         self.layouts = committed()
 
-    def test_every_layout_holds_exactly_capacity_stones(self):
-        """One slot per stone is the whole promise of the mod: 32 slots, no more, no fewer."""
+    def test_no_layout_exceeds_the_block_capacity(self):
+        """One slot per stone is the whole promise of the mod, and a block holds at most 32."""
         for name, slots in self.layouts.items():
             with self.subTest(layout=name):
-                self.assertEqual(len(slots), geo.CAPACITY)
+                self.assertGreater(len(slots), 0)
+                self.assertLessEqual(len(slots), geo.CAPACITY)
+
+    def test_ground_level_layouts_fill_the_block(self):
+        """Everything a pile can be on the ground holds a full 32; only the upper courses of a
+        cairn hold fewer, because a narrower ring physically fits fewer stones."""
+        for name in ("heap", "neat", "wall", "scattered", "cairn0"):
+            with self.subTest(layout=name):
+                self.assertEqual(len(self.layouts[name]), geo.CAPACITY)
+
+    def test_cairn_segments_hold_fewer_stones_as_they_narrow(self):
+        counts = [len(self.layouts[f"cairn{i}"]) for i in range(geo.CAIRN_SEGMENTS)]
+        for lower, upper in zip(counts, counts[1:]):
+            self.assertLess(upper, lower)
 
     def test_expected_layouts_are_present(self):
         expected = {"heap", "neat", "wall", "scattered"}
@@ -94,12 +107,28 @@ class TestCommittedConfig(unittest.TestCase):
             with self.subTest(layout=name):
                 self.assertAlmostEqual(slots[0]["y"], 0.0)
 
-    def test_cairn_segments_narrow_as_the_column_rises(self):
-        """A cairn is a cone. Each segment up must be strictly narrower than the one below."""
-        widths = []
+    def test_cairn_never_flares_going_up_the_column(self):
+        """A cairn is one cone, not three stacked drums. Each segment must pick up at the radius
+        the one below it ended on, or the column visibly pinches and flares at every block
+        boundary — which is exactly what the first draft of these profiles did."""
+        for segment in range(geo.CAIRN_SEGMENTS - 1):
+            ends_at = geo.cairn_rings(segment)[-1][1]
+            starts_at = geo.cairn_rings(segment + 1)[0][1]
+            with self.subTest(joint=f"cairn{segment}->cairn{segment + 1}"):
+                self.assertLessEqual(starts_at, ends_at + 1e-9)
+
+    def test_each_cairn_segment_narrows_within_itself(self):
         for segment in range(geo.CAIRN_SEGMENTS):
-            slots = self.layouts[f"cairn{segment}"]
-            widths.append(max(abs(s["x"] - 0.5) for s in slots))
+            radii = [radius for _, radius in geo.cairn_rings(segment)]
+            with self.subTest(segment=segment):
+                self.assertEqual(radii, sorted(radii, reverse=True))
+
+    def test_cairn_footprint_shrinks_segment_over_segment(self):
+        """The generated slots, not just the design profile, have to get narrower going up."""
+        widths = [
+            max(abs(s["x"] - 0.5) for s in self.layouts[f"cairn{i}"])
+            for i in range(geo.CAIRN_SEGMENTS)
+        ]
         for lower, upper in zip(widths, widths[1:]):
             self.assertLess(upper, lower)
 
