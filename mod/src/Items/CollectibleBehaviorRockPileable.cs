@@ -310,14 +310,23 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
 
         if (rotating)
         {
-            pile.RotateBy(1);
+            // Only the client decides which way is next. The picker calls SetToolMode on both
+            // sides, and a relative turn applied on both is a turn of 90 degrees, which is what
+            // put every second orientation out of reach.
+            if (world.Side != EnumAppSide.Client)
+            {
+                return;
+            }
 
-            // Apply locally for the redraw, then let the server make it real. Tool mode selection
-            // is synced as a mode index, which cannot express "turn once more".
+            var target = pile.Orientation + 1;
+            pile.TurnTo(target);
+
+            // Send where it should end up, not how far to go, so the server landing on it a
+            // second time changes nothing.
             (world.Api as ICoreClientAPI)?.Network.SendBlockEntityPacket(
                 pile.Pos,
                 BlockEntityRockPile.PacketIdRotate,
-                BitConverter.GetBytes(1));
+                BitConverter.GetBytes(target));
             return;
         }
 

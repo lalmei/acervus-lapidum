@@ -226,10 +226,17 @@ public class BlockEntityRockPile : BlockEntityDisplay
         orientation = ((value % steps) + steps) % steps;
     }
 
-    /// <summary>Turns the pile by whole 45 degree steps, and the rest of its column with it.</summary>
-    public void RotateBy(int steps, bool propagate = true)
+    /// <summary>
+    /// Turns the pile to a given orientation, and the rest of its column with it.
+    ///
+    /// Absolute, not relative, and deliberately so: the tool mode picker runs SetToolMode on the
+    /// client and again on the server, which is harmless for a layout change (setting the same
+    /// mode twice is that mode) but doubled every "turn one more step" into 90 degrees. Asking
+    /// for a specific orientation is idempotent, so applying it twice lands in the same place.
+    /// </summary>
+    public void TurnTo(int value, bool propagate = true)
     {
-        SetOrientation(orientation + steps);
+        SetOrientation(value);
         RegenCollision();
         MarkMeshesDirty();
         MarkDirty(true);
@@ -349,7 +356,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
         var value = BitConverter.ToInt32(data, 0);
         if (packetid == PacketIdRotate)
         {
-            RotateBy(value);
+            TurnTo(value);
             return;
         }
 

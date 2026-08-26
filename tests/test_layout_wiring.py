@@ -106,6 +106,33 @@ class TestLayoutWiring(unittest.TestCase):
         self.assertEqual(declared, geo.HEAP_CAPACITY)
 
 
+class TestRotationIsIdempotent(unittest.TestCase):
+    """Turning a pile must survive being applied twice.
+
+    The tool mode picker runs SetToolMode on the client and again on the server. That is harmless
+    for a layout change, because setting the same mode twice is that mode — but a relative "turn
+    one more step" applied on both sides turns 45 degrees into 90, which put half the orientations
+    out of reach. Source guards, since neither side can be constructed without a running world.
+    """
+
+    def setUp(self):
+        self.entity = (MOD / "src/Storage/BlockEntityRockPile.cs").read_text()
+        self.behavior = BEHAVIOR.read_text()
+
+    def test_the_pile_turns_to_an_orientation_rather_than_by_one(self):
+        self.assertIn("public void TurnTo(int value", self.entity)
+        self.assertNotIn("RotateBy", self.entity)
+        self.assertNotIn("RotateBy", self.behavior)
+
+    def test_the_rotate_packet_carries_the_destination(self):
+        """A payload meaning 'end up here' is safe to apply twice; 'go one further' is not."""
+        self.assertIn("var target = pile.Orientation + 1;", self.behavior)
+        self.assertIn("BitConverter.GetBytes(target)", self.behavior)
+
+    def test_only_the_client_picks_the_next_orientation(self):
+        self.assertIn("if (world.Side != EnumAppSide.Client)", self.behavior)
+
+
 class TestMixedRockTypes(unittest.TestCase):
     """A pile takes whatever stone you hand it — granite into a basalt pile stays granite.
 
