@@ -26,13 +26,21 @@ stone in the pile is one rock you can see.** Then it lets you do something with 
   loads. A full 64-stone one becomes a two-segment cairn, because that is what it always was.
 - **Other mods' rocks pile too.** Anything whose item code starts `stone-` is picked up, so the
   rock types from Geology Addons and friends work without a compatibility patch each.
+- **Knapping is untouched.** Piling uses Ctrl as well as sneak, so the sneak + right-click that
+  starts a knapping surface still belongs to vanilla.
 
 Requires **Vintage Story 1.22.x**.
 
 ## How a pile works
 
-**Sneak + right-click** with stones in hand to place or add. Plain **right-click** takes one back.
-Hold **Ctrl** to move eight at a time. **F** with empty hands cycles the layout.
+**Sneak + Ctrl + right-click** with stones in hand to place or add — hold the button down to keep
+feeding the pile a stone at a time. Plain **right-click** takes one back, **Ctrl + right-click**
+takes several. **F** with empty hands cycles the layout.
+
+Ctrl is not there to be awkward. Sneak + right-click on its own is how you lay the first stone for
+**knapping**, and vanilla keeps its own stone piles out of the way by asking for Ctrl too
+(`ctrlKey: true` on stone's ground-storage properties). An earlier version of this mod claimed
+sneak + right-click and made every hard stone unknappable.
 
 A pile holds **32 stones** — that is what one block fits at vanilla's own visual density. The 33rd
 has nowhere to go but the block above, and that is the whole cairn mechanic: a pile only becomes

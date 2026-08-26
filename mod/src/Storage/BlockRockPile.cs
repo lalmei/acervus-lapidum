@@ -122,9 +122,11 @@ public class BlockRockPile : Block
         {
             new()
             {
+                // Shift alone belongs to knapping, so adding takes Ctrl as well — the same
+                // modifier vanilla's own stone ground storage asks for.
                 ActionLangCode = "acervuslapidum:blockhelp-rockpile-add",
                 MouseButton = EnumMouseButton.Right,
-                HotKeyCode = "shift",
+                HotKeyCodes = ["shift", "ctrl"],
                 Itemstacks = GetExampleStoneStacks(world)
             },
             new()
@@ -134,7 +136,7 @@ public class BlockRockPile : Block
             },
             new()
             {
-                ActionLangCode = "acervuslapidum:blockhelp-rockpile-bulk",
+                ActionLangCode = "acervuslapidum:blockhelp-rockpile-takebulk",
                 MouseButton = EnumMouseButton.Right,
                 HotKeyCodes = ["ctrl"]
             },

@@ -9,10 +9,16 @@ using Vintagestory.GameContent;
 namespace AcervusLapidum.Items;
 
 /// <summary>
-/// Sneak + RMB puts a stone into an Acervus Lapidum rock pile, replacing vanilla's Stacking
-/// ground storage for new placements. Pre-existing vanilla stone piles are converted on load by
+/// Sneak + Ctrl + RMB puts a stone into an Acervus Lapidum rock pile, replacing vanilla's
+/// Stacking ground storage for new placements. Hold the button to keep feeding the pile.
+/// Pre-existing vanilla stone piles are converted on load by
 /// <see cref="BlockEntityBehaviorRockPileConverter"/> rather than being interacted with here.
 /// F while looking at a pile (or at placeable ground) picks the layout.
+///
+/// Ctrl is not decoration. Sneak + RMB alone is how you start knapping a hard stone, and vanilla
+/// keeps its own stone ground storage out of the way by setting <c>ctrlKey: true</c> on the
+/// GroundStorable properties — see BlockEntityGroundStorage.OnPlayerInteractStart, which refuses
+/// a non-empty hand unless Ctrl is down. Claiming sneak + RMB here made hard stones unknappable.
 /// </summary>
 public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
 {
@@ -100,7 +106,81 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
             return;
         }
 
+        // secondsUsed restarts at zero for this hold, so a marker left by the last one would sit
+        // in the future and stall the repeat forever.
+        byEntity.Attributes.SetFloat(StepAttr, 0f);
         handling = EnumHandling.PreventSubsequent;
+    }
+
+    /// <summary>Seconds between stones while the place button is held down.</summary>
+    private const float RepeatSeconds = 0.22f;
+
+    private const string StepAttr = "acervuslapidum:lastPileStep";
+
+    /// <summary>
+    /// Keeps feeding the pile while the button is held.
+    ///
+    /// A course is 32 stones and Ctrl is spoken for by the add gesture itself, so there is no key
+    /// left to hang a bulk transfer on. Holding the button is the better answer anyway: the pile
+    /// grows a stone at a time under the cursor and you stop when it looks right, which is rather
+    /// the point of placing stones one by one.
+    /// </summary>
+    public override bool OnHeldInteractStep(
+        float secondsUsed,
+        ItemSlot slot,
+        EntityAgent byEntity,
+        BlockSelection blockSel,
+        EntitySelection entitySel,
+        ref EnumHandling handling)
+    {
+        if (blockSel is null
+            || !byEntity.Controls.ShiftKey
+            || !byEntity.Controls.CtrlKey
+            || !RockPileUtil.IsPileableStone(slot.Itemstack))
+        {
+            return false;
+        }
+
+        handling = EnumHandling.PreventSubsequent;
+
+        var last = byEntity.Attributes.GetFloat(StepAttr);
+        if (secondsUsed - last < RepeatSeconds)
+        {
+            return true;
+        }
+
+        byEntity.Attributes.SetFloat(StepAttr, secondsUsed);
+
+        var handHandling = EnumHandHandling.NotHandled;
+        TryInteract(slot, byEntity, blockSel, ref handHandling);
+
+        // Keep going even when that stone did not land — the pile may have just filled, and the
+        // player is still holding the button over a spot where the next course can start.
+        return true;
+    }
+
+    public override void OnHeldInteractStop(
+        float secondsUsed,
+        ItemSlot slot,
+        EntityAgent byEntity,
+        BlockSelection blockSel,
+        EntitySelection entitySel,
+        ref EnumHandling handling)
+    {
+        byEntity.Attributes.SetFloat(StepAttr, 0f);
+    }
+
+    public override bool OnHeldInteractCancel(
+        float secondsUsed,
+        ItemSlot slot,
+        EntityAgent byEntity,
+        BlockSelection blockSel,
+        EntitySelection entitySel,
+        EnumItemUseCancelReason cancelReason,
+        ref EnumHandling handled)
+    {
+        byEntity.Attributes.SetFloat(StepAttr, 0f);
+        return true;
     }
 
     public override WorldInteraction[] GetHeldInteractionHelp(ItemSlot inSlot, ref EnumHandling handling)
@@ -110,7 +190,7 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         [
             new WorldInteraction
             {
-                HotKeyCode = "shift",
+                HotKeyCodes = ["shift", "ctrl"],
                 ActionLangCode = "acervuslapidum:heldhelp-rockpile-place",
                 MouseButton = EnumMouseButton.Right
             },
@@ -195,7 +275,10 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         // ShiftKey, not Sneak: they are separate controls, and ShiftKey is the one the client
         // routes a right-click by and the one vanilla's Throwable checks before it starts aiming.
         // Stones are throwable, so reading the other flag would let one click both aim and place.
-        if (blockSel is null || world is null || !byEntity!.Controls.ShiftKey)
+        //
+        // CtrlKey as well, and this one is load-bearing: without it we swallow the sneak + RMB
+        // that starts knapping, and every hard stone in the game becomes unknappable.
+        if (blockSel is null || world is null || !byEntity!.Controls.ShiftKey || !byEntity.Controls.CtrlKey)
         {
             return false;
         }

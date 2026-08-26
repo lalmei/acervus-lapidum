@@ -14,11 +14,11 @@
   "blockinfo-rockpile-layout": "Laid as: {0}",
   "blockinfo-rockpile-full": "Full — place a stone on top to start the next course",
 
-  "blockhelp-rockpile-add": "Add a stone",
+  "blockhelp-rockpile-add": "Add a stone (hold to keep adding)",
   "blockhelp-rockpile-take": "Take a stone",
-  "blockhelp-rockpile-bulk": "Take or add several",
+  "blockhelp-rockpile-takebulk": "Take several",
   "blockhelp-rockpile-layout": "Change the layout",
 
-  "heldhelp-rockpile-place": "Place a stone",
+  "heldhelp-rockpile-place": "Place a stone (hold to keep placing)",
   "heldhelp-rockpile-layout": "Choose the layout"
 }

@@ -261,8 +261,12 @@ public class BlockEntityRockPile : BlockEntityDisplay
         // same flag here, and reading the other one desyncs put/take from the aim the click starts.
         var sneaking = byPlayer.Entity.Controls.ShiftKey;
 
+        // Ctrl on top of sneak to add, matching what vanilla's ctrlKey stone storage asks for.
+        // Sneak alone has to stay clear: that is the gesture that starts knapping a hard stone.
+        var adding = byPlayer.Entity.Controls.CtrlKey;
+
         bool ok;
-        if (sneaking && !hotbar.Empty && RockPileUtil.IsPileableStone(hotbar.Itemstack))
+        if (sneaking && adding && !hotbar.Empty && RockPileUtil.IsPileableStone(hotbar.Itemstack))
         {
             ok = TryPut(byPlayer);
         }
@@ -297,9 +301,9 @@ public class BlockEntityRockPile : BlockEntityDisplay
             return false;
         }
 
-        var bulk = byPlayer.Entity.Controls.CtrlKey;
-        var maxTake = bulk ? RockPileUtil.BulkTransferQuantity : RockPileUtil.TransferQuantity;
-        maxTake = Math.Min(maxTake, SlotCount - StoneCount);
+        // One stone a click. Ctrl is spoken for — it is half of the add gesture — so bulk adding
+        // is done by holding the button down instead; see OnHeldInteractStep on the behavior.
+        var maxTake = Math.Min(RockPileUtil.TransferQuantity, SlotCount - StoneCount);
 
         // One stone at a time, debiting the hand only once its slot has taken the stone, so a
         // stone can never leave a hand and find nowhere to land.
