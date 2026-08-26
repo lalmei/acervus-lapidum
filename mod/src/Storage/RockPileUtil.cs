@@ -15,22 +15,39 @@ public enum RockPileLayoutMode
     Neat = 1,
     Cairn = 2,
     Wall = 3,
-    Scattered = 4
+    Scattered = 4,
+    Masonry = 5,
+    Ring = 6,
+    Spiral = 7,
+    Steps = 8,
+    Balanced = 9,
+    TwinColumns = 10
 }
 
 public static class RockPileUtil
 {
     /// <summary>
-    /// The most stones any single pile can hold, and so the inventory size.
+    /// The most stones any single pile can hold, and so the inventory size. Masonry earns it:
+    /// tiling a whole cube takes twelve stones a course and eight courses.
     ///
-    /// Thirty-two, because that is what one block holds at vanilla's own visual density: the top
-    /// cube of <c>item/stone-pile</c> sits at 12.4px, so a 32nd stone lands just under the ceiling.
-    /// Stone 33 has nowhere to go but the block above, which is exactly how a pile becomes a cairn.
-    ///
-    /// What a *particular* pile holds is the slot count of the layout it is wearing, which is
-    /// smaller for the upper courses of a cairn — see <see cref="RockPileLayoutConfig.ForMode"/>.
+    /// What a *particular* pile holds is the slot count of the layout it is wearing — see
+    /// <see cref="RockPileLayoutConfig.ForMode"/>. A heap holds 32, a cairn crown 19, a balanced
+    /// stack 7.
     /// </summary>
-    public const int Capacity = 32;
+    public const int MaxSlots = 96;
+
+    /// <summary>
+    /// Vanilla's own loose-pile density: the top cube of <c>item/stone-pile</c> sits at 12.4px, so
+    /// 32 stones fill a block the way the game already fills one. Heap, neat and scattered hold
+    /// exactly this, so tipping stone on the ground behaves as it always did.
+    /// </summary>
+    public const int HeapCapacity = 32;
+
+    /// <summary>Rotation steps a pile can be turned through, at 45 degrees each.</summary>
+    public const int OrientationSteps = 8;
+
+    /// <summary>Layouts that fill their block solidly enough to stand on and build against.</summary>
+    public static bool IsSolidLayout(RockPileLayoutMode mode) => mode == RockPileLayoutMode.Masonry;
 
     /// <summary>One stone a click. Vanilla moves two, but vanilla draws one rock per two stones.</summary>
     public const int TransferQuantity = 1;
@@ -130,19 +147,58 @@ public static class RockPileUtil
     }
 
     /// <summary>
-    /// Hugs the tallest occupied slot, so a pile you have barely started is ankle high and a full
-    /// one is knee high, rather than every pile claiming the same box.
+    /// A box around the stones that are actually there.
+    ///
+    /// Measured rather than assumed, in all three axes: a pile you have barely started is ankle
+    /// high, a balanced stack is a narrow post you can walk around, and a finished masonry course
+    /// comes out a full cube — which is what lets it behave as a solid block without a special
+    /// case here.
     /// </summary>
-    public static Cuboidf CollisionForCount(RockPileSlotTransform[] layout, int stoneCount)
+    public static Cuboidf CollisionForCount(RockPileSlotTransform[] layout, int stoneCount, float yawDeg = 0f)
     {
-        var count = Math.Clamp(stoneCount, 1, Capacity);
-        var top = StoneHeight;
-        for (var i = 0; i < count && i < layout.Length; i++)
+        var count = Math.Clamp(stoneCount, 1, layout.Length);
+        if (count == 0)
         {
-            top = Math.Max(top, SlotTopHeight(layout[i]));
+            return new Cuboidf(0.05f, 0, 0.05f, 0.95f, 0.125f, 0.95f);
         }
 
-        return new Cuboidf(0.05f, 0, 0.05f, 0.95f, Math.Clamp(top + 0.03f, 0.125f, 1f), 0.95f);
+        float minX = 1f, minZ = 1f, maxX = 0f, maxZ = 0f, top = StoneHeight;
+        var spin = new Matrixf().RotateYDeg(yawDeg).Values;
+
+        for (var i = 0; i < count; i++)
+        {
+            var pose = layout[i];
+            top = Math.Max(top, SlotTopHeight(pose));
+
+            // Half-extents of the stone once its own pose is applied, then the whole set is spun
+            // by the pile's orientation about the block centre.
+            var m = SlotRotation(pose).Values;
+            var halfX = Math.Abs(m[0]) * (StoneLength / 2f)
+                        + Math.Abs(m[4]) * StoneHeight
+                        + Math.Abs(m[8]) * (StoneDepth / 2f);
+            var halfZ = Math.Abs(m[2]) * (StoneLength / 2f)
+                        + Math.Abs(m[6]) * StoneHeight
+                        + Math.Abs(m[10]) * (StoneDepth / 2f);
+
+            var dx = pose.X - 0.5f;
+            var dz = pose.Z - 0.5f;
+            var cx = 0.5f + spin[0] * dx + spin[8] * dz;
+            var cz = 0.5f + spin[2] * dx + spin[10] * dz;
+            var reach = Math.Max(halfX, halfZ);
+
+            minX = Math.Min(minX, cx - reach);
+            maxX = Math.Max(maxX, cx + reach);
+            minZ = Math.Min(minZ, cz - reach);
+            maxZ = Math.Max(maxZ, cz + reach);
+        }
+
+        return new Cuboidf(
+            Math.Clamp(minX, 0f, 0.45f),
+            0,
+            Math.Clamp(minZ, 0f, 0.45f),
+            Math.Clamp(maxX, 0.55f, 1f),
+            Math.Clamp(top + 0.03f, 0.125f, 1f),
+            Math.Clamp(maxZ, 0.55f, 1f));
     }
 }
 
@@ -183,6 +239,25 @@ public sealed class RockPileLayoutConfig
     [JsonProperty("wall")]
     public RockPileSlotTransform[] Wall { get; set; } = [];
 
+    /// <summary>A whole cube of coursed stone, and the only layout that yields a solid block.</summary>
+    [JsonProperty("masonry")]
+    public RockPileSlotTransform[] Masonry { get; set; } = [];
+
+    [JsonProperty("ring")]
+    public RockPileSlotTransform[] Ring { get; set; } = [];
+
+    [JsonProperty("spiral")]
+    public RockPileSlotTransform[] Spiral { get; set; } = [];
+
+    [JsonProperty("steps")]
+    public RockPileSlotTransform[] Steps { get; set; } = [];
+
+    [JsonProperty("balanced")]
+    public RockPileSlotTransform[] Balanced { get; set; } = [];
+
+    [JsonProperty("twincolumns")]
+    public RockPileSlotTransform[] TwinColumns { get; set; } = [];
+
     [JsonProperty("scattered")]
     public RockPileSlotTransform[] Scattered { get; set; } = [];
 
@@ -208,6 +283,12 @@ public sealed class RockPileLayoutConfig
             RockPileLayoutMode.Neat => Neat,
             RockPileLayoutMode.Wall => Wall,
             RockPileLayoutMode.Scattered => Scattered,
+            RockPileLayoutMode.Masonry => Masonry,
+            RockPileLayoutMode.Ring => Ring,
+            RockPileLayoutMode.Spiral => Spiral,
+            RockPileLayoutMode.Steps => Steps,
+            RockPileLayoutMode.Balanced => Balanced,
+            RockPileLayoutMode.TwinColumns => TwinColumns,
             RockPileLayoutMode.Cairn => Math.Clamp(segment, 0, RockPileUtil.CairnSegmentProfiles - 1) switch
             {
                 0 => Cairn0,
@@ -226,7 +307,7 @@ public sealed class RockPileLayoutConfig
     /// </summary>
     public static RockPileSlotTransform[] CreateDefault()
     {
-        var slots = new RockPileSlotTransform[RockPileUtil.Capacity];
+        var slots = new RockPileSlotTransform[RockPileUtil.HeapCapacity];
         for (var i = 0; i < slots.Length; i++)
         {
             // Four to a layer on the block quarters, alternating course direction.

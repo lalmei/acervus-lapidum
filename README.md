@@ -20,8 +20,12 @@ stone in the pile is one rock you can see.** Then it lets you do something with 
   a proper waymarker, course by course, the way you would actually build one.
 - **Low walls.** A wall layout lays the same stones in two staggered courses. Put a few in a row
   and they line up into continuous drystone rather than a row of separate heaps.
-- **Five layouts** — heap, neat course, cairn, low wall, scattered — switched with **F** while
-  looking at a pile, or from the tool-mode picker with a stone in hand.
+- **A solid block, if you want one.** Fill a pile in the masonry layout and you get real coursed
+  stone: walkable, buildable, fences and torches take hold. It costs what it looks like it costs.
+- **Eleven layouts**, switched with **F** while looking at a pile, or from the tool-mode picker
+  with a stone in hand — which also turns the pile, 45° a click.
+- **Mix your rock however you like.** A granite dropped into a basalt pile stores as granite,
+  renders as granite and comes back as granite. Nothing insists a pile be all one stone.
 - **Your old piles still work.** Existing vanilla stone piles convert themselves when their chunk
   loads. A full 64-stone one becomes a two-segment cairn, because that is what it always was.
 - **Other mods' rocks pile too.** Anything whose item code starts `stone-` is picked up, so the
@@ -42,16 +46,33 @@ Ctrl is not there to be awkward. Sneak + right-click on its own is how you lay t
 (`ctrlKey: true` on stone's ground-storage properties). An earlier version of this mod claimed
 sneak + right-click and made every hard stone unknappable.
 
-A pile holds **32 stones** — that is what one block fits at vanilla's own visual density. The 33rd
-has nowhere to go but the block above, and that is the whole cairn mechanic: a pile only becomes
-solid on top once it is full, so you finish a course before you start the next.
+A pile only becomes solid on top once it is **full**, so you finish a course before you start the
+next. That one rule is the whole cairn mechanic.
 
-The upper courses of a cairn hold **fewer** stones — 25, then 20. This is not an arbitrary nerf. A
-ring of radius `r` needs about `2 pi r / 0.3125` stones to close, so a narrower course simply takes
-fewer, and every cairn ring is sized from its own radius rather than hand-picked. Each segment
-spends all eight of a block's two-pixel layers, so the segment above lands exactly on top of it
-with no daylight in between. Changing a full heap into a narrow cairn course is refused instead of
-quietly hiding the surplus.
+How many stones "full" means depends on how the pile is laid, because it is measured rather than
+decided:
+
+| Layout | Stones | |
+| --- | --- | --- |
+| Heap, neat course, scattered | 32 | vanilla's own loose-pile density |
+| Spiral | 32 | |
+| Wall | 30 | five courses of six |
+| Cairn | 40 / 28 / 19 | footing, body, shoulder — see below |
+| Steps | 60 | solid stone all the way down |
+| Hearth ring | 18 | hollow middle |
+| Twin columns | 16 | |
+| Balanced stack | 7 | |
+| **Masonry** | **96** | a whole cube, twelve to a course |
+
+The cairn narrows as it climbs because a ring of `N` stones laid end to end has exactly one
+radius, `N × 0.3125 / 2π`. Choosing the count chooses the width, every ring closes with no gap to
+see through, and the taper is simply the counts falling: six to a course on the ground, two at the
+top. Each segment spends all eight of a block's two-pixel layers, so the one above lands flush on
+it. Restyling a pile into a layout that holds fewer stones than it currently has is refused rather
+than quietly hiding the surplus.
+
+Masonry is the odd one out: it does not turn. A coursed cube coaxed 45° would swing its corners a
+fifth of a block into its neighbour, which is not something a block claiming to be solid may do.
 
 ## Where the geometry comes from
 
@@ -63,7 +84,7 @@ own bottom-centre too — which is precisely the pivot the block entity's render
 32 cubes map onto 32 slot poses with no fudging, and the layer heights fall out at 0, 2, 4, 6, 8,
 10.3 and 12.4 pixels.
 
-`tools/rockpile_geometry.py` does that conversion and generates the other four layouts, writing
+`tools/rockpile_geometry.py` does that conversion and generates the other ten layouts, writing
 `mod/assets/acervuslapidum/config/rockpile-layout.json`. It is seeded, so regenerating on an
 unchanged install is a no-op diff — there is a test for that. Five of vanilla's cubes are drawn as
 re-proportioned boxes rather than rotated ones, and the tool recovers the rotation those

@@ -24,7 +24,10 @@ public class BlockEntityRockPile : BlockEntityDisplay
     private bool clientsideFirstPlacement;
     private RockPileLayoutMode layoutMode = RockPileLayoutMode.Heap;
 
-    /// <summary>Which way a Wall layout runs. Ignored by every other mode.</summary>
+    /// <summary>
+    /// Which way the pile is turned, in 45 degree steps. Applies to every layout — a spiral or a
+    /// stair wants aiming just as much as a wall does — and is simply invisible on the round ones.
+    /// </summary>
     private int orientation;
 
     /// <summary>
@@ -35,7 +38,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
     public BlockEntityRockPile()
     {
-        inventory = new InventoryGeneric(RockPileUtil.Capacity, null, null, (_, inv) => new ItemSlot(inv));
+        inventory = new InventoryGeneric(RockPileUtil.MaxSlots, null, null, (_, inv) => new ItemSlot(inv));
         foreach (var slot in inventory)
         {
             slot.StorageType |= EnumItemStorageFlags.Backpack;
@@ -79,7 +82,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// How many stones this pile can hold as it is currently laid. Not a constant: the upper
     /// courses of a cairn are narrower, and a narrow course genuinely holds fewer stones.
     /// </summary>
-    public int SlotCount => Math.Min(CurrentLayout().Length, RockPileUtil.Capacity);
+    public int SlotCount => Math.Min(CurrentLayout().Length, RockPileUtil.MaxSlots);
 
     public bool IsFull => StoneCount >= SlotCount;
 
@@ -161,9 +164,51 @@ public class BlockEntityRockPile : BlockEntityDisplay
         return stoneCount <= layoutConfig.ForMode(mode, segmentIndex).Length;
     }
 
+    /// <summary>
+    /// How far the pile is turned when drawn.
+    ///
+    /// A solid layout stays square. Masonry is a coursed cube: turning it 45 degrees would swing
+    /// its corners a fifth of a block into the neighbour, which is not something a block claiming
+    /// to be solid may do. It also would not read as anything — the bond already alternates every
+    /// course, so a turned cube looks like an untuned one.
+    /// </summary>
+    public float YawDeg => RockPileUtil.IsSolidLayout(layoutMode)
+        ? 0f
+        : orientation * (360f / RockPileUtil.OrientationSteps);
+
+    /// <summary>Whether this pile is currently a solid block: masonry, and finished.</summary>
+    public bool IsSolid => RockPileUtil.IsSolidLayout(layoutMode) && IsFull;
+
     public void SetOrientation(int value)
     {
-        orientation = ((value % 4) + 4) % 4;
+        var steps = RockPileUtil.OrientationSteps;
+        orientation = ((value % steps) + steps) % steps;
+    }
+
+    /// <summary>Turns the pile by whole 45 degree steps, and the rest of its column with it.</summary>
+    public void RotateBy(int steps, bool propagate = true)
+    {
+        SetOrientation(orientation + steps);
+        RegenCollision();
+        MarkMeshesDirty();
+        MarkDirty(true);
+        Api?.World.BlockAccessor.MarkBlockDirty(Pos);
+
+        if (!propagate)
+        {
+            return;
+        }
+
+        // Same reason layout changes propagate: a cairn or a column of masonry is one object, and
+        // turning half of it leaves a kink.
+        foreach (var segment in ColumnFrom(Pos))
+        {
+            segment.SetOrientation(orientation);
+            segment.RegenCollision();
+            segment.MarkMeshesDirty();
+            segment.MarkDirty(true);
+            Api?.World.BlockAccessor.MarkBlockDirty(segment.Pos);
+        }
     }
 
     /// <summary>Every other rockpile in this vertical run, walking both ways from a position.</summary>
@@ -230,9 +275,12 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// <summary>Empty-handed layout change, sent by <see cref="RockPileLayoutHotkey"/>.</summary>
     public const int PacketIdSetLayout = 5101;
 
+    /// <summary>Rotation, sent by the tool mode picker's turn entry.</summary>
+    public const int PacketIdRotate = 5102;
+
     public override void OnReceivedClientPacket(IPlayer fromPlayer, int packetid, byte[] data)
     {
-        if (packetid != PacketIdSetLayout)
+        if (packetid != PacketIdSetLayout && packetid != PacketIdRotate)
         {
             base.OnReceivedClientPacket(fromPlayer, packetid, data);
             return;
@@ -246,7 +294,14 @@ public class BlockEntityRockPile : BlockEntityDisplay
             return;
         }
 
-        SetLayoutMode(RockPileUtil.ClampLayoutMode(BitConverter.ToInt32(data, 0)));
+        var value = BitConverter.ToInt32(data, 0);
+        if (packetid == PacketIdRotate)
+        {
+            RotateBy(value);
+            return;
+        }
+
+        SetLayoutMode(RockPileUtil.ClampLayoutMode(value));
     }
 
     public void MarkClientsideFirstPlacement()
@@ -468,17 +523,16 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
     public void RegenCollision()
     {
-        colBoxes = [RockPileUtil.CollisionForCount(CurrentLayout(), Math.Max(1, StoneCount))];
+        colBoxes = [RockPileUtil.CollisionForCount(CurrentLayout(), Math.Max(1, StoneCount), YawDeg)];
     }
 
     protected override float[][] genTransformationMatrices()
     {
         var layout = CurrentLayout();
-        // A wall runs whichever way it was laid; every other layout is the same from any side.
-        var yaw = layoutMode == RockPileLayoutMode.Wall ? orientation * 90f : 0f;
+        var yaw = YawDeg;
 
-        var matrices = new float[RockPileUtil.Capacity][];
-        for (var i = 0; i < RockPileUtil.Capacity; i++)
+        var matrices = new float[RockPileUtil.MaxSlots][];
+        for (var i = 0; i < RockPileUtil.MaxSlots; i++)
         {
             var pose = i < layout.Length
                 ? layout[i]
@@ -513,7 +567,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
         base.FromTreeAttributes(tree, worldForResolving);
         clientsideFirstPlacement = false;
         layoutMode = RockPileUtil.ClampLayoutMode(tree.GetInt("layoutMode", (int)RockPileLayoutMode.Heap));
-        orientation = tree.GetInt("orientation");
+        SetOrientation(tree.GetInt("orientation"));
         RecalcSegmentIndex();
         RegenCollision();
         RedrawAfterReceivingTreeAttributes(worldForResolving);
@@ -531,6 +585,11 @@ public class BlockEntityRockPile : BlockEntityDisplay
         if (IsFull)
         {
             dsc.AppendLine(Lang.Get("acervuslapidum:blockinfo-rockpile-full"));
+        }
+
+        if (IsSolid)
+        {
+            dsc.AppendLine(Lang.Get("acervuslapidum:blockinfo-rockpile-solid"));
         }
     }
 }

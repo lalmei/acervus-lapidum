@@ -34,12 +34,28 @@ from pathlib import Path
 
 PX = 1.0 / 16.0
 STONE_DIMS_PX = (5.0, 2.0, 4.0)  # the item/stone cube, x by y by z
+STONE_LENGTH = STONE_DIMS_PX[0] * PX
 STONE_HEIGHT = STONE_DIMS_PX[1] * PX
+STONE_DEPTH = STONE_DIMS_PX[2] * PX
 
-# How many stones one pile block holds. Vanilla's 32-cube heap tops out at y = 14.4px, so 32
-# stones fill a block at exactly vanilla's visual density. Stone 33 has to start a new segment,
-# which is what turns a full pile into the first course of a cairn.
-CAPACITY = 32
+# Eight 2px layers fill a block exactly.
+LAYERS = 8
+
+# The loose-pile density vanilla itself uses: its 32-cube heap tops out at y = 14.4px. Heap, neat,
+# wall and scattered all hold this, so a pile you just tip on the ground behaves like vanilla's.
+HEAP_CAPACITY = 32
+
+# The largest any layout gets, and so the inventory size. Masonry earns it: tiling a whole cube
+# with 0.31 x 0.25 x 0.125 stones takes 12 a layer. A solid stone block really is that much stone.
+MAX_SLOTS = 96
+
+# Layouts that fill their block solidly enough to stand on. These must never overhang, and so
+# never rotate off the axis: a coursed cube turned 45 degrees puts its corners through the wall of
+# the block next door, which is exactly the solidity it just promised not to violate.
+SOLID_LAYOUTS = frozenset({"masonry"})
+
+# A pile turns in 45 degree steps.
+ORIENTATION_STEPS = 8
 
 # Cairn segments get narrower the higher up the column they sit. Beyond this index they stay at
 # the narrowest profile, so a very tall cairn keeps a spire rather than pinching to nothing.
@@ -160,8 +176,8 @@ def load_heap(game_path: Path):
     # The shape file lists Cube31 before Cube30; sort by height so filling a pile builds it
     # bottom-up rather than jumping a layer and back.
     slots.sort(key=lambda s: (s["y"], s["x"], s["z"]))
-    if len(slots) != CAPACITY:
-        raise ValueError(f"expected {CAPACITY} heap slots, vanilla shape gave {len(slots)}")
+    if len(slots) != HEAP_CAPACITY:
+        raise ValueError(f"expected {HEAP_CAPACITY} heap slots, vanilla shape gave {len(slots)}")
     return slots
 
 
@@ -183,7 +199,7 @@ def build_neat(rng):
     """Four stones a layer on the block quarters, courses crossed like stacked timber."""
     quarters = [(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)]
     slots = []
-    for layer in range(CAPACITY // 4):
+    for layer in range(HEAP_CAPACITY // 4):
         # Alternate the course by 90 degrees so the stones bind instead of forming four columns.
         base_yaw = 0.0 if layer % 2 == 0 else 90.0
         for x, z in quarters:
@@ -193,100 +209,78 @@ def build_neat(rng):
     return slots
 
 
-# A block fits exactly eight 2px layers. Every cairn segment uses all eight, so the top of one
-# segment's stones lands on y = 1.0 and the next segment's first layer starts there. Anything less
-# leaves the segment above visibly floating — an earlier draft gave the middle segment six layers
-# and hung a quarter-block of air under the one above it.
-CAIRN_LAYERS = 8
+# Cairn profiles are written as stones-per-layer, not radii, because a closed ring of N stones has
+# exactly one radius: r = N * STONE_LENGTH / tau. Choosing the count therefore chooses the radius,
+# every ring closes by construction, and the taper is legible right here in the numbers.
+#
+# The counts fall as the column rises, which is the whole point — an earlier version averaged four
+# stones a layer throughout and came out a cylinder. A broad base costs stones: six to a ring at
+# r = 0.30 against two at r = 0.10.
+CAIRN_PROFILES = [
+    [6, 6, 5, 5, 5, 5, 4, 4],  # 40 - the footing, widest course on the ground
+    [4, 4, 4, 4, 3, 3, 3, 3],  # 28 - the body
+    [3, 3, 3, 2, 2, 2, 2, 2],  # 19 - the shoulder, and every course above it
+]
 
-# Radius each segment runs between. Consecutive segments share a boundary, so the column is one
-# cone; past the last profile it simply continues at the narrowest width rather than restarting.
-CAIRN_RADII = [(0.195, 0.15), (0.15, 0.1125), (0.1125, 0.085)]
 
-
-def ring_count(radius):
-    """How many stones close a ring of this radius.
-
-    A stone is one stone-length long and lies tangentially, so a ring needs about
-    ``2*pi*r / STONE_LENGTH`` of them to meet end to end. Always round *up*: one stone too many
-    closes the ring with a little overlap, which is what dry stone looks like, while one too few
-    leaves a gap you can see straight through. The radii above are chosen so that rounding up
-    still lands the base segment on exactly CAPACITY stones.
-    """
-    stone_length = STONE_DIMS_PX[0] * PX
-    return max(2, math.ceil(math.tau * radius / stone_length))
+def ring_radius(count):
+    """The radius at which ``count`` stones lie tangentially end to end, closing the ring."""
+    return count * STONE_LENGTH / math.tau
 
 
 def cairn_rings(segment):
-    """(count, radius) per layer for one cairn segment, narrowing as the column rises.
-
-    Counts are derived from the radius rather than tabulated, so every ring closes by
-    construction. That is also why the higher segments hold fewer stones: a narrow course
-    physically cannot take as many, and faking it with heavy overlap would mean stones growing
-    through each other.
-    """
-    outer, inner = CAIRN_RADII[min(segment, len(CAIRN_RADII) - 1)]
-    radii = [
-        outer + (inner - outer) * (i / (CAIRN_LAYERS - 1))
-        for i in range(CAIRN_LAYERS)
-    ]
-    return [(ring_count(r), r) for r in radii]
+    """(count, radius) per layer for one cairn segment, narrowing as the column rises."""
+    counts = CAIRN_PROFILES[min(segment, len(CAIRN_PROFILES) - 1)]
+    return [(count, ring_radius(count)) for count in counts]
 
 
 def build_cairn(rng, segment):
     """Rings of stones laid tangentially and tipped inward, so the segment reads as a cone."""
     slots = []
     phase = rng.uniform(0, math.tau)
+    widest = ring_radius(max(CAIRN_PROFILES[0]))
+
     for layer, (count, radius) in enumerate(cairn_rings(segment)):
         # Advance the phase half a stone every layer so each ring bridges the joints of the one
-        # below. The previous version recomputed the same offset for every layer above the first,
-        # which lined the joints up into vertical seams running the height of the segment.
+        # below rather than lining them up into a vertical seam.
         if layer > 0:
             phase += math.pi / count
         for i in range(count):
             theta = phase + math.tau * i / count
-            x = 0.5 + radius * math.cos(theta)
-            z = 0.5 + radius * math.sin(theta)
-            # The stone's long axis is X, so a yaw of -theta lays it along the ring.
-            yaw = -math.degrees(theta) + rng.uniform(-8.0, 8.0)
             slots.append(
                 slot(
-                    x,
+                    0.5 + radius * math.cos(theta),
                     layer * STONE_HEIGHT,
-                    z,
-                    yaw,
+                    0.5 + radius * math.sin(theta),
+                    # The stone's long axis is X, so a yaw of -theta lays it along the ring.
+                    -math.degrees(theta) + rng.uniform(-8.0, 8.0),
                     rng.uniform(-4.0, 4.0),
                     # Tip the outer face down so the cone sheds rather than looking like a stack
                     # of hoops. Narrow rings sit flatter, in proportion to the widest course.
-                    -7.0 * (radius / CAIRN_RADII[0][0]) + rng.uniform(-3.0, 3.0),
+                    -7.0 * (radius / widest) + rng.uniform(-3.0, 3.0),
                 )
             )
-    if len(slots) > CAPACITY:
-        raise ValueError(f"cairn segment {segment} produced {len(slots)} slots, over the {CAPACITY} cap")
     return slots
 
 
 def build_wall(rng):
     """Two courses of stones running along X, joints staggered course to course.
 
-    The block entity yaws the whole set by the facing stored at placement, so this only ever has
-    to describe the wall running west to east.
+    The block entity yaws the whole set by the orientation stored on the pile, so this only ever
+    has to describe the wall running west to east.
     """
     per_row, rows = 3, 2
-    per_layer = per_row * rows
-    layers = math.ceil(CAPACITY / per_layer)
     z_rows = [0.5 - 0.13, 0.5 + 0.13]
 
     slots = []
-    for layer in range(layers):
-        # Half-stone offset on alternate courses: the joints break, the way a drystone wall is laid.
+    for layer in range(LAYERS - 3):
+        # Half-stone offset on alternate courses: the joints break, the way a wall is laid.
         stagger = 0.0 if layer % 2 == 0 else 0.5 * (1.0 / per_row)
         for row in range(rows):
             for i in range(per_row):
-                if len(slots) == CAPACITY:
+                if len(slots) == HEAP_CAPACITY:
                     break
-                x = (i + 0.5) / per_row + stagger
-                x = min(0.93, max(0.07, x))
+                x = min(0.93, max(0.07, (i + 0.5) / per_row + stagger))
                 slots.append(
                     slot(
                         x,
@@ -302,10 +296,8 @@ def build_wall(rng):
 
 def build_scattered(rng):
     """A low, wide spread — a marker you notice from a distance, not a heap you built."""
-    counts = [13, 11, 8]
-    radii = [0.36, 0.26, 0.15]
     slots = []
-    for layer, (count, radius) in enumerate(zip(counts, radii)):
+    for layer, (count, radius) in enumerate(zip((13, 11, 8), (0.36, 0.26, 0.15))):
         phase = rng.uniform(0, math.tau)
         for i in range(count):
             theta = phase + math.tau * i / count + rng.uniform(-0.2, 0.2)
@@ -320,12 +312,147 @@ def build_scattered(rng):
                     rng.uniform(-6.0, 6.0),
                 )
             )
-    if len(slots) != CAPACITY:
-        raise ValueError(f"scattered produced {len(slots)} slots, want {CAPACITY}")
     return slots
 
 
-# --- assembly --------------------------------------------------------------------------------------
+def build_masonry(rng):
+    """A whole cube of coursed stone — the layout that gives you a solid block back.
+
+    Twelve stones tile a layer either way round: three lengths across by four depths, or four
+    depths across by three lengths. Alternating the two every course is a running bond, so the
+    joints break exactly as they would in real coursed masonry, and it lands on twelve both ways.
+    """
+    # No jitter anywhere in here. Every other layout gets a degree or two of slop to look laid by
+    # hand, but this one has to fit its own cube exactly to be allowed to call itself solid, and a
+    # dressed, coursed wall is square in any case.
+    slots = []
+    for layer in range(LAYERS):
+        crossed = layer % 2 == 1
+        cols, rows = (4, 3) if crossed else (3, 4)
+        for col in range(cols):
+            for row in range(rows):
+                slots.append(
+                    slot(
+                        (col + 0.5) / cols,
+                        layer * STONE_HEIGHT,
+                        (row + 0.5) / rows,
+                        90.0 if crossed else 0.0,
+                    )
+                )
+    return slots
+
+
+def build_ring(rng):
+    """A hearth ring: three courses of stones round a hollow centre."""
+    count = 6
+    radius = ring_radius(count)
+    slots = []
+    phase = rng.uniform(0, math.tau)
+    for layer in range(3):
+        if layer > 0:
+            phase += math.pi / count
+        for i in range(count):
+            theta = phase + math.tau * i / count
+            slots.append(
+                slot(
+                    0.5 + radius * math.cos(theta),
+                    layer * STONE_HEIGHT,
+                    0.5 + radius * math.sin(theta),
+                    -math.degrees(theta) + rng.uniform(-5.0, 5.0),
+                    rng.uniform(-3.0, 3.0),
+                    rng.uniform(-3.0, 3.0),
+                )
+            )
+    return slots
+
+
+def build_spiral(rng):
+    """A twisted column: every course turns a little further than the one below.
+
+    Each ring still closes, so nothing is cantilevered — the stones simply do not sit directly on
+    their neighbours below, which is what draws the helical seam up the side.
+    """
+    count = 4
+    radius = ring_radius(count)
+    slots = []
+    for layer in range(LAYERS):
+        # A steady 15 degrees a course: about a quarter turn over the block, enough to read as a
+        # spiral without any stone losing the one beneath it.
+        phase = math.radians(15.0 * layer)
+        for i in range(count):
+            theta = phase + math.tau * i / count
+            slots.append(
+                slot(
+                    0.5 + radius * math.cos(theta),
+                    layer * STONE_HEIGHT,
+                    0.5 + radius * math.sin(theta),
+                    -math.degrees(theta) + rng.uniform(-3.0, 3.0),
+                    rng.uniform(-2.0, 2.0),
+                    rng.uniform(-2.0, 2.0),
+                )
+            )
+    return slots
+
+
+def build_steps(rng):
+    """A stair of four steps, each two courses higher than the last.
+
+    Solid all the way down — every stone rests on stone, not on air — so it works as a mounting
+    block or a stile beside a wall rather than being purely decorative.
+    """
+    steps, across = 4, 3
+    slots = []
+    for step in range(steps):
+        for layer in range((step + 1) * 2):
+            for col in range(across):
+                slots.append(
+                    slot(
+                        (col + 0.5) / across,
+                        layer * STONE_HEIGHT,
+                        (step + 0.5) / steps,
+                        rng.uniform(-2.0, 2.0),
+                    )
+                )
+    return slots
+
+
+def build_balanced(rng):
+    """The trail-marker look: a few flat stones stacked centrally, each turned off the last."""
+    slots = []
+    for layer in range(7):
+        slots.append(
+            slot(
+                0.5 + rng.uniform(-0.035, 0.035),
+                layer * STONE_HEIGHT,
+                0.5 + rng.uniform(-0.035, 0.035),
+                layer * 37.0 + rng.uniform(-6.0, 6.0),
+                rng.uniform(-3.5, 3.5),
+                rng.uniform(-3.5, 3.5),
+            )
+        )
+    return slots
+
+
+def build_twin_columns(rng):
+    """Two slender columns with a gap between them — gateposts, or the start of a doorway.
+
+    One stone a course, turned a quarter every layer so the column binds to itself instead of
+    being a single long domino waiting to fall over.
+    """
+    slots = []
+    for layer in range(LAYERS):
+        for x in (0.24, 0.76):
+            slots.append(
+                slot(
+                    x,
+                    layer * STONE_HEIGHT,
+                    0.5,
+                    (90.0 if layer % 2 else 0.0) + rng.uniform(-4.0, 4.0),
+                    rng.uniform(-2.0, 2.0),
+                    rng.uniform(-2.0, 2.0),
+                )
+            )
+    return slots
 
 
 def build_layouts(game_path: Path):
@@ -335,11 +462,26 @@ def build_layouts(game_path: Path):
         "neat": build_neat(rng),
         "wall": build_wall(rng),
         "scattered": build_scattered(rng),
+        "masonry": build_masonry(rng),
+        "ring": build_ring(rng),
+        "spiral": build_spiral(rng),
+        "steps": build_steps(rng),
+        "balanced": build_balanced(rng),
+        "twincolumns": build_twin_columns(rng),
     }
     # Flat keys rather than a nested list: the block entity picks cairn{min(segment, 2)} and the
     # C# config stays one dictionary of named slot arrays.
     for segment in range(CAIRN_SEGMENTS):
         layouts[f"cairn{segment}"] = build_cairn(rng, segment)
+
+    # Piles fill in slot order, so every layout has to be laid out bottom-up or a stone would
+    # appear above a gap. Sorting is stable, which keeps each course in the order its builder
+    # wrote it.
+    for name, slots in layouts.items():
+        slots.sort(key=lambda s: s["y"])
+        if not 0 < len(slots) <= MAX_SLOTS:
+            raise ValueError(f"{name} produced {len(slots)} slots, outside 1..{MAX_SLOTS}")
+
     return layouts
 
 

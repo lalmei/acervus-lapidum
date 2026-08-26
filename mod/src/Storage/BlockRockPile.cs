@@ -34,11 +34,12 @@ public class BlockRockPile : Block
     }
 
     /// <summary>
-    /// A full pile carries the next course; a part-built one does not.
+    /// A full pile carries the next course; a part-built one does not. Finished masonry carries
+    /// anything on any face, because at that point it is a stone block.
     ///
-    /// This is the whole cairn mechanic. You cannot start a second course on a pile with gaps in
-    /// it, which is both how drystone actually works and a clear rule to read in game: fill the
-    /// course you are on, then keep going up.
+    /// The upward rule is the whole cairn mechanic. You cannot start a second course on a pile
+    /// with gaps in it, which is both how drystone actually works and a clear rule to read in
+    /// game: fill the course you are on, then keep going up.
     /// </summary>
     public override bool CanAttachBlockAt(
         IBlockAccessor blockAccessor,
@@ -47,12 +48,27 @@ public class BlockRockPile : Block
         BlockFacing blockFace,
         Cuboidi? attachmentArea = null)
     {
-        if (blockFace == BlockFacing.UP)
+        if (blockAccessor.GetBlockEntity(pos) is not BlockEntityRockPile pile)
         {
-            return blockAccessor.GetBlockEntity(pos) is BlockEntityRockPile { IsFull: true };
+            return base.CanAttachBlockAt(blockAccessor, block, pos, blockFace, attachmentArea);
         }
 
-        return base.CanAttachBlockAt(blockAccessor, block, pos, blockFace, attachmentArea);
+        return pile.IsSolid || (blockFace == BlockFacing.UP && pile.IsFull);
+    }
+
+    /// <summary>
+    /// Finished masonry is a solid block: you can walk on it, fences and torches take hold, and
+    /// the renderer may cull the faces behind it. Every other layout has gaps you can see through,
+    /// so it stays non-solid however full it is.
+    /// </summary>
+    public override bool SideIsSolid(IBlockAccessor blockAccessor, BlockPos pos, int faceIndex)
+    {
+        if (blockAccessor.GetBlockEntity(pos) is BlockEntityRockPile pile)
+        {
+            return pile.IsSolid;
+        }
+
+        return base.SideIsSolid(blockAccessor, pos, faceIndex);
     }
 
     public override bool OnBlockInteractStart(IWorldAccessor world, IPlayer byPlayer, BlockSelection blockSel)
@@ -147,6 +163,12 @@ public class BlockRockPile : Block
                 ActionLangCode = "acervuslapidum:blockhelp-rockpile-layout",
                 HotKeyCode = RockPileLayoutHotkey.HotkeyCode,
                 MouseButton = EnumMouseButton.None
+            },
+            new()
+            {
+                ActionLangCode = "acervuslapidum:blockhelp-rockpile-rotate",
+                HotKeyCode = "toolmodeselect",
+                MouseButton = EnumMouseButton.None
             }
         }.Append(base.GetPlacedBlockInteractionHelp(world, selection, forPlayer));
     }
@@ -239,15 +261,24 @@ public class BlockRockPile : Block
                 continue;
             }
 
-            // The generated wall runs along X at orientation 0, so an even orientation runs
-            // east-west and an odd one north-south.
-            var neighbourRunsEastWest = neighbour.Orientation % 2 == 0;
+            // Orientation counts 45 degree steps, so only the even ones lie on an axis at all.
+            // A neighbour sitting on a diagonal has no axis to agree with and is left alone.
+            if (neighbour.Orientation % 2 != 0)
+            {
+                continue;
+            }
+
+            // The generated wall runs along X at orientation 0, so 0 and 4 run east-west while
+            // 2 and 6 run north-south.
+            var neighbourRunsEastWest = neighbour.Orientation % 4 == 0;
             if (neighbourRunsEastWest == (facing.Axis == EnumAxis.X))
             {
                 return neighbour.Orientation;
             }
         }
 
-        return GameMath.Mod((int)Math.Round(player.Entity.Pos.Yaw / (Math.PI / 2)), 4);
+        // Snap the player's facing to the nearest 45 degrees.
+        var step = Math.Tau / RockPileUtil.OrientationSteps;
+        return GameMath.Mod((int)Math.Round(player.Entity.Pos.Yaw / step), RockPileUtil.OrientationSteps);
     }
 }

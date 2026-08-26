@@ -78,6 +78,106 @@ public static class RockPileLayoutIcons
         (0.255, 0.680, -5, Narrow)
     ];
 
+    /// <summary>Coursed stone filling the whole icon: the layout that hands back a solid block.</summary>
+    private static readonly (double dx, double y, double angle, double width)[] MasonryStones =
+    [
+        (-0.330, 0.860, 0, Wide), (0.000, 0.860, 0, Wide), (0.330, 0.860, 0, Wide),
+        (-0.165, 0.745, 0, Wide), (0.165, 0.745, 0, Wide), (-0.440, 0.745, 0, 0.16), (0.440, 0.745, 0, 0.16),
+        (-0.330, 0.630, 0, Wide), (0.000, 0.630, 0, Wide), (0.330, 0.630, 0, Wide),
+        (-0.165, 0.515, 0, Wide), (0.165, 0.515, 0, Wide), (-0.440, 0.515, 0, 0.16), (0.440, 0.515, 0, 0.16),
+        (-0.330, 0.400, 0, Wide), (0.000, 0.400, 0, Wide), (0.330, 0.400, 0, Wide)
+    ];
+
+    /// <summary>A hearth seen slightly from above: a hollow ring of stones.</summary>
+    private static readonly (double dx, double y, double angle, double width)[] RingStones =
+    [
+        (0.000, 0.430, 0, Narrow),
+        (-0.250, 0.480, 22, Narrow),
+        (0.250, 0.480, -22, Narrow),
+        (-0.345, 0.610, 68, Narrow),
+        (0.345, 0.610, -68, Narrow),
+        (-0.250, 0.740, 158, Narrow),
+        (0.250, 0.740, -158, Narrow),
+        (0.000, 0.800, 0, Narrow)
+    ];
+
+    /// <summary>Courses stepping sideways as they rise, tracing the helical seam.</summary>
+    private static readonly (double dx, double y, double angle, double width)[] SpiralStones =
+    [
+        (-0.150, 0.860, 6, Wide),
+        (0.150, 0.780, -6, Wide),
+        (0.180, 0.680, 10, Wide),
+        (-0.060, 0.590, -12, Wide),
+        (-0.190, 0.490, 8, Wide),
+        (0.060, 0.400, -8, Wide),
+        (0.170, 0.310, 12, Narrow),
+        (-0.080, 0.230, -10, Narrow)
+    ];
+
+    /// <summary>A stair in profile, each tread one step higher than the last.</summary>
+    private static readonly (double dx, double y, double angle, double width)[] StepsStones =
+    [
+        (-0.345, 0.865, 0, Narrow), (-0.115, 0.865, 0, Narrow), (0.115, 0.865, 0, Narrow), (0.345, 0.865, 0, Narrow),
+        (-0.115, 0.745, 0, Narrow), (0.115, 0.745, 0, Narrow), (0.345, 0.745, 0, Narrow),
+        (0.115, 0.625, 0, Narrow), (0.345, 0.625, 0, Narrow),
+        (0.345, 0.505, 0, Narrow)
+    ];
+
+    /// <summary>A trail marker: a few stones stacked centrally, each turned off the last.</summary>
+    private static readonly (double dx, double y, double angle, double width)[] BalancedStones =
+    [
+        (0.000, 0.860, 3, 0.44),
+        (0.020, 0.745, -5, 0.36),
+        (-0.025, 0.630, 6, 0.30),
+        (0.015, 0.515, -4, Narrow),
+        (-0.010, 0.400, 5, 0.17)
+    ];
+
+    /// <summary>Two slender columns with daylight between them.</summary>
+    private static readonly (double dx, double y, double angle, double width)[] TwinColumnStones =
+    [
+        (-0.260, 0.865, 0, Narrow), (0.260, 0.865, 0, Narrow),
+        (-0.260, 0.745, 0, 0.16), (0.260, 0.745, 0, 0.16),
+        (-0.260, 0.625, 0, Narrow), (0.260, 0.625, 0, Narrow),
+        (-0.260, 0.505, 0, 0.16), (0.260, 0.505, 0, 0.16),
+        (-0.260, 0.385, 0, Narrow), (0.260, 0.385, 0, Narrow)
+    ];
+
+    /// <summary>
+    /// The turn entry. Drawn as one stone stepped round through part of a circle rather than as an
+    /// arrow, so it sits in the same visual language as the layouts beside it in the picker.
+    /// </summary>
+    private static readonly (double dx, double y, double angle, double width)[] RotateStones =
+    [
+        (0.000, 0.320, 0, Narrow),
+        (0.230, 0.400, 45, Narrow),
+        (0.320, 0.600, 90, Narrow),
+        (0.230, 0.800, 135, Narrow),
+        (0.000, 0.880, 180, Narrow),
+        (-0.230, 0.800, 225, Narrow)
+    ];
+
+    public static void DrawMasonry(Context cr, int x, int y, float w, float h, double[] rgba) =>
+        Draw(cr, x, y, w, h, rgba, MasonryStones);
+
+    public static void DrawRing(Context cr, int x, int y, float w, float h, double[] rgba) =>
+        Draw(cr, x, y, w, h, rgba, RingStones);
+
+    public static void DrawSpiral(Context cr, int x, int y, float w, float h, double[] rgba) =>
+        Draw(cr, x, y, w, h, rgba, SpiralStones);
+
+    public static void DrawSteps(Context cr, int x, int y, float w, float h, double[] rgba) =>
+        Draw(cr, x, y, w, h, rgba, StepsStones);
+
+    public static void DrawBalanced(Context cr, int x, int y, float w, float h, double[] rgba) =>
+        Draw(cr, x, y, w, h, rgba, BalancedStones);
+
+    public static void DrawTwinColumns(Context cr, int x, int y, float w, float h, double[] rgba) =>
+        Draw(cr, x, y, w, h, rgba, TwinColumnStones);
+
+    public static void DrawRotate(Context cr, int x, int y, float w, float h, double[] rgba) =>
+        Draw(cr, x, y, w, h, rgba, RotateStones);
+
     public static void DrawHeap(Context cr, int x, int y, float w, float h, double[] rgba) =>
         Draw(cr, x, y, w, h, rgba, HeapStones);
 

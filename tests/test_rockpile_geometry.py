@@ -25,6 +25,13 @@ def committed():
     return json.loads(COMMITTED.read_text())
 
 
+def spun(s, yaw_deg):
+    """A slot as the pile draws it once turned by the pile's own orientation."""
+    dx, dz = s["x"] - 0.5, s["z"] - 0.5
+    x, _, z = geo.apply(geo.rot_y(yaw_deg), (dx, 0.0, dz))
+    return {**s, "x": 0.5 + x, "z": 0.5 + z, "yawDeg": s["yawDeg"] + yaw_deg}
+
+
 def overhang(s):
     """How far past the block edge this slot's stone reaches, in block units.
 
@@ -51,19 +58,46 @@ class TestCommittedConfig(unittest.TestCase):
     def setUp(self):
         self.layouts = committed()
 
-    def test_no_layout_exceeds_the_block_capacity(self):
-        """One slot per stone is the whole promise of the mod, and a block holds at most 32."""
+    def test_no_layout_exceeds_the_inventory(self):
+        """One slot per stone is the whole promise of the mod, so no layout may want more slots
+        than a pile actually has."""
         for name, slots in self.layouts.items():
             with self.subTest(layout=name):
                 self.assertGreater(len(slots), 0)
-                self.assertLessEqual(len(slots), geo.CAPACITY)
+                self.assertLessEqual(len(slots), geo.MAX_SLOTS)
 
-    def test_ground_level_layouts_fill_the_block(self):
-        """Everything a pile can be on the ground holds a full 32; only the upper courses of a
-        cairn hold fewer, because a narrower ring physically fits fewer stones."""
-        for name in ("heap", "neat", "wall", "scattered", "cairn0"):
+    def test_loose_layouts_hold_vanillas_pile_density(self):
+        """The layouts that are just stone tipped on the ground stay at vanilla's own density."""
+        for name in ("heap", "neat", "scattered"):
             with self.subTest(layout=name):
-                self.assertEqual(len(self.layouts[name]), geo.CAPACITY)
+                self.assertEqual(len(self.layouts[name]), geo.HEAP_CAPACITY)
+
+    def test_masonry_tiles_every_course(self):
+        """Masonry is the layout that hands back a solid block, so every course has to be full —
+        a gap anywhere means the block is claiming a solidity it does not have."""
+        slots = self.layouts["masonry"]
+        self.assertEqual(len(slots), geo.MAX_SLOTS)
+
+        by_layer = {}
+        for s in slots:
+            by_layer.setdefault(round(s["y"], 5), []).append(s)
+        self.assertEqual(len(by_layer), geo.LAYERS)
+        for height, course in by_layer.items():
+            with self.subTest(height=height):
+                self.assertEqual(len(course), 12)
+
+    def test_masonry_courses_alternate_direction(self):
+        """A running bond: each course is laid across the one below, so the joints never line up
+        through the block."""
+        by_layer = {}
+        for s in self.layouts["masonry"]:
+            by_layer.setdefault(round(s["y"], 5), []).append(s)
+        yaws = [
+            round(sum(abs(s["yawDeg"]) for s in course) / len(course))
+            for _, course in sorted(by_layer.items())
+        ]
+        for lower, upper in zip(yaws, yaws[1:]):
+            self.assertNotEqual(lower, upper)
 
     def test_cairn_segments_hold_fewer_stones_as_they_narrow(self):
         counts = [len(self.layouts[f"cairn{i}"]) for i in range(geo.CAIRN_SEGMENTS)]
@@ -71,9 +105,38 @@ class TestCommittedConfig(unittest.TestCase):
             self.assertLess(upper, lower)
 
     def test_expected_layouts_are_present(self):
-        expected = {"heap", "neat", "wall", "scattered"}
+        expected = {
+            "heap", "neat", "wall", "scattered",
+            "masonry", "ring", "spiral", "steps", "balanced", "twincolumns",
+        }
         expected |= {f"cairn{i}" for i in range(geo.CAIRN_SEGMENTS)}
         self.assertEqual(set(self.layouts), expected)
+
+    def test_ring_is_hollow(self):
+        """A hearth ring you can lay a fire in. If the middle fills up it is just a small pile."""
+        for s in self.layouts["ring"]:
+            distance = math.hypot(s["x"] - 0.5, s["z"] - 0.5)
+            self.assertGreater(distance, 0.2)
+
+    def test_twin_columns_leave_a_gap_between_them(self):
+        """Two columns, not one wide one — there has to be daylight down the middle."""
+        xs = sorted({round(s["x"], 3) for s in self.layouts["twincolumns"]})
+        self.assertEqual(len(xs), 2)
+        # Clear of each other once the stones' own half-length is taken off the gap.
+        self.assertGreater(xs[1] - xs[0], geo.STONE_LENGTH)
+
+    def test_steps_climb(self):
+        """Each step must be strictly higher than the one in front of it, and rest on stone all
+        the way down rather than starting in mid-air."""
+        by_row = {}
+        for s in self.layouts["steps"]:
+            by_row.setdefault(round(s["z"], 3), []).append(s["y"])
+        rows = sorted(by_row)
+        tops = [max(by_row[z]) for z in rows]
+        self.assertEqual(tops, sorted(tops))
+        self.assertLess(tops[0], tops[-1])
+        for z in rows:
+            self.assertAlmostEqual(min(by_row[z]), 0.0)
 
     def test_no_layout_overhangs_further_than_vanillas_own_heap(self):
         """Stones do stick out of a pile — vanilla's heap included, by design. What must hold is
@@ -86,6 +149,29 @@ class TestCommittedConfig(unittest.TestCase):
             for i, s in enumerate(slots):
                 with self.subTest(layout=name, slot=i):
                     self.assertLessEqual(overhang(s), budget + 1e-6)
+
+    def test_solid_layouts_stay_entirely_inside_their_block(self):
+        """Masonry claims to be a solid block — walkable, buildable, face-culling. A stone poking
+        out of it would be visibly lying, so it must fit its own cube exactly, and it is pinned
+        square for the same reason (see BlockEntityRockPile.YawDeg)."""
+        for name in geo.SOLID_LAYOUTS:
+            for i, s in enumerate(self.layouts[name]):
+                with self.subTest(layout=name, slot=i):
+                    self.assertAlmostEqual(overhang(s), 0.0, places=6)
+
+    def test_turning_a_pile_never_makes_it_spill_much_further(self):
+        """Piles turn in 45 degree steps, and a square arrangement is at its widest on the
+        diagonal. Loose stone may spill over the edge — vanilla's own heap does — but the diagonal
+        must not turn that spill into something that swamps the neighbouring block."""
+        budget = 0.27
+        for name, slots in self.layouts.items():
+            if name in geo.SOLID_LAYOUTS:
+                continue
+            for step in range(geo.ORIENTATION_STEPS):
+                yaw = step * (360 / geo.ORIENTATION_STEPS)
+                worst = max(overhang(spun(s, yaw)) for s in slots)
+                with self.subTest(layout=name, yaw=yaw):
+                    self.assertLessEqual(worst, budget)
 
     def test_no_slot_reaches_into_the_block_above(self):
         """This is the one that has to be exact: a cairn stacks segments, so a stone crossing
@@ -138,7 +224,7 @@ class TestCommittedConfig(unittest.TestCase):
             for layer, (count, radius) in enumerate(geo.cairn_rings(segment)):
                 coverage = count * stone_length / (math.tau * radius)
                 with self.subTest(segment=segment, layer=layer):
-                    self.assertGreaterEqual(coverage, 1.0)
+                    self.assertGreaterEqual(coverage, 1.0 - 1e-9)
 
     def test_each_cairn_segment_narrows_within_itself(self):
         for segment in range(geo.CAIRN_SEGMENTS):
