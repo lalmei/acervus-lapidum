@@ -76,6 +76,12 @@ A balanced stack holds seven and masonry holds ninety-six, so changing your mind
 routinely leaves stones over; they pop out as items rather than sitting in the pile unrendered,
 which would break the one thing this pile promises.
 
+Every pile keeps **its own** layout and its own facing. Stack whatever you like on whatever you
+like — a masonry footing under a cairn, steps against the end of a wall — and restyling the one you
+are looking at leaves its neighbours alone. Stacked piles take their layout from the stone that
+placed them, so a cairn still comes out a cairn all the way up without any of them reaching across
+a block boundary.
+
 **Stairs taller than one block** are built the way real ones are. Stack a pile on a flight of steps
 and the flight becomes the solid footing carrying it, so the climb continues instead of restarting
 at the bottom of every block. Take the load off again and it goes back to being a flight.

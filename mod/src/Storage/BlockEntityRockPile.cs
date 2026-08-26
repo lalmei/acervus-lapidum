@@ -131,10 +131,19 @@ public class BlockEntityRockPile : BlockEntityDisplay
         layoutConfig.ForMode(layoutMode, segmentIndex, loadAbove);
 
     /// <summary>
-    /// Restyles the pile. A layout that holds fewer stones than are in the pile hands the extra
-    /// ones back rather than swallowing them — see <see cref="ShedSurplus"/>.
+    /// Restyles this pile, and only this pile.
+    ///
+    /// Layout changes used to run through the whole vertical column, on the theory that a cairn
+    /// is one object that happens to span several blocks. In the hand that is just surprising:
+    /// restyling the pile you are looking at silently rewrites the ones under it. Stacked piles
+    /// pick up their layout from the stone that placed them anyway, so a cairn still comes out a
+    /// cairn all the way up without anyone reaching across block boundaries — and a masonry
+    /// footing under a cairn, or steps beside a wall, is now something you can actually build.
+    ///
+    /// A layout that holds fewer stones than are in the pile hands the extra ones back rather
+    /// than swallowing them — see <see cref="ShedSurplus"/>.
     /// </summary>
-    public bool SetLayoutMode(RockPileLayoutMode mode, bool propagate = true)
+    public bool SetLayoutMode(RockPileLayoutMode mode)
     {
         if (layoutMode == mode)
         {
@@ -147,16 +156,6 @@ public class BlockEntityRockPile : BlockEntityDisplay
         MarkMeshesDirty();
         MarkDirty(true);
         Api?.World.BlockAccessor.MarkBlockDirty(Pos);
-
-        // A cairn is one object even though it is several blocks, so restyling any segment
-        // restyles the column. Without this you can end up with a neat course wearing a cairn hat.
-        if (propagate)
-        {
-            foreach (var segment in ColumnFrom(Pos))
-            {
-                segment.SetLayoutMode(mode, propagate: false);
-            }
-        }
 
         return true;
     }
@@ -227,65 +226,23 @@ public class BlockEntityRockPile : BlockEntityDisplay
     }
 
     /// <summary>
-    /// Turns the pile to a given orientation, and the rest of its column with it.
+    /// Turns the pile to a given orientation.
     ///
     /// Absolute, not relative, and deliberately so: the tool mode picker runs SetToolMode on the
     /// client and again on the server, which is harmless for a layout change (setting the same
     /// mode twice is that mode) but doubled every "turn one more step" into 90 degrees. Asking
     /// for a specific orientation is idempotent, so applying it twice lands in the same place.
+    ///
+    /// Turns this pile alone, for the same reason layouts do: reaching down the column to turn
+    /// blocks the player is not looking at is a surprise, not a convenience.
     /// </summary>
-    public void TurnTo(int value, bool propagate = true)
+    public void TurnTo(int value)
     {
         SetOrientation(value);
         RegenCollision();
         MarkMeshesDirty();
         MarkDirty(true);
         Api?.World.BlockAccessor.MarkBlockDirty(Pos);
-
-        if (!propagate)
-        {
-            return;
-        }
-
-        // Same reason layout changes propagate: a cairn or a column of masonry is one object, and
-        // turning half of it leaves a kink.
-        foreach (var segment in ColumnFrom(Pos))
-        {
-            segment.SetOrientation(orientation);
-            segment.RegenCollision();
-            segment.MarkMeshesDirty();
-            segment.MarkDirty(true);
-            Api?.World.BlockAccessor.MarkBlockDirty(segment.Pos);
-        }
-    }
-
-    /// <summary>Every other rockpile in this vertical run, walking both ways from a position.</summary>
-    private IEnumerable<BlockEntityRockPile> ColumnFrom(BlockPos origin)
-    {
-        if (Api is null)
-        {
-            yield break;
-        }
-
-        foreach (var step in new[] { -1, 1 })
-        {
-            var probe = origin.Copy();
-            while (true)
-            {
-                probe = probe.AddCopy(0, step, 0);
-                if (probe.Y < 0 || probe.Y >= Api.World.BlockAccessor.MapSizeY)
-                {
-                    break;
-                }
-
-                if (Api.World.BlockAccessor.GetBlockEntity(probe) is not BlockEntityRockPile pile)
-                {
-                    break;
-                }
-
-                yield return pile;
-            }
-        }
     }
 
     /// <summary>

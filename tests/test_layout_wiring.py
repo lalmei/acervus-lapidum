@@ -133,6 +133,35 @@ class TestRotationIsIdempotent(unittest.TestCase):
         self.assertIn("if (world.Side != EnumAppSide.Client)", self.behavior)
 
 
+class TestChangesStayOnOnePile(unittest.TestCase):
+    """Restyling or turning a pile must not reach into its neighbours.
+
+    Both used to run through the whole vertical column, so changing the layout of a pile stacked
+    on another silently rewrote the one underneath. Stacked piles inherit their layout from the
+    stone that placed them, which is what makes a cairn come out a cairn all the way up, so the
+    column walk bought nothing and cost the player any mixed column they wanted to build.
+    """
+
+    def setUp(self):
+        self.source = (MOD / "src/Storage/BlockEntityRockPile.cs").read_text()
+
+    def test_no_column_walk_survives(self):
+        self.assertNotIn("ColumnFrom", self.source)
+        self.assertNotIn("propagate", self.source)
+
+    def test_layout_and_rotation_touch_only_their_own_position(self):
+        """Both may mark themselves dirty; neither may address another pile's position."""
+        for method in ("public bool SetLayoutMode(", "public void TurnTo("):
+            start = self.source.index(method)
+            end = self.source.index("\n    }\n", start)
+            body = self.source[start:end]
+            with self.subTest(method=method):
+                self.assertIn("MarkBlockDirty(Pos)", body)
+                self.assertNotIn("UpCopy", body)
+                self.assertNotIn("DownCopy", body)
+                self.assertNotIn("segment.", body)
+
+
 class TestMixedRockTypes(unittest.TestCase):
     """A pile takes whatever stone you hand it — granite into a basalt pile stays granite.
 

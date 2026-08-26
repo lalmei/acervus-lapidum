@@ -225,7 +225,7 @@ public class BlockRockPile : Block
         }
 
         var held = player.InventoryManager.ActiveHotbarSlot;
-        pile.SetLayoutMode(RockPileUtil.GetHeldLayoutMode(held.Itemstack), propagate: false);
+        pile.SetLayoutMode(RockPileUtil.GetHeldLayoutMode(held.Itemstack));
 
         pile.SetOrientation(WallOrientationFor(world, pos, player));
 
