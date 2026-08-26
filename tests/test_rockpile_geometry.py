@@ -7,6 +7,7 @@ breaks proportionality fails here rather than in game.
 from __future__ import annotations
 
 import json
+import math
 import sys
 import unittest
 from pathlib import Path
@@ -116,6 +117,28 @@ class TestCommittedConfig(unittest.TestCase):
             starts_at = geo.cairn_rings(segment + 1)[0][1]
             with self.subTest(joint=f"cairn{segment}->cairn{segment + 1}"):
                 self.assertLessEqual(starts_at, ends_at + 1e-9)
+
+    def test_cairn_segments_leave_no_gap_between_blocks(self):
+        """Every cairn segment must fill its block to the ceiling.
+
+        A segment that stops short hangs the one above it in mid-air: the middle segment once used
+        six of the eight available layers and left a quarter-block of daylight under the crown,
+        which is exactly what a stacked cairn looked wrong for.
+        """
+        for segment in range(geo.CAIRN_SEGMENTS):
+            slots = self.layouts[f"cairn{segment}"]
+            top = max(s["y"] for s in slots) + geo.STONE_HEIGHT
+            with self.subTest(segment=segment):
+                self.assertAlmostEqual(top, 1.0, places=6)
+
+    def test_cairn_rings_always_close(self):
+        """A ring with under 100% coverage has a hole you can see straight through."""
+        stone_length = geo.STONE_DIMS_PX[0] * geo.PX
+        for segment in range(geo.CAIRN_SEGMENTS):
+            for layer, (count, radius) in enumerate(geo.cairn_rings(segment)):
+                coverage = count * stone_length / (math.tau * radius)
+                with self.subTest(segment=segment, layer=layer):
+                    self.assertGreaterEqual(coverage, 1.0)
 
     def test_each_cairn_segment_narrows_within_itself(self):
         for segment in range(geo.CAIRN_SEGMENTS):

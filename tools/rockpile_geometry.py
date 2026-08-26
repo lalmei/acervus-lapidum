@@ -193,38 +193,56 @@ def build_neat(rng):
     return slots
 
 
+# A block fits exactly eight 2px layers. Every cairn segment uses all eight, so the top of one
+# segment's stones lands on y = 1.0 and the next segment's first layer starts there. Anything less
+# leaves the segment above visibly floating — an earlier draft gave the middle segment six layers
+# and hung a quarter-block of air under the one above it.
+CAIRN_LAYERS = 8
+
+# Radius each segment runs between. Consecutive segments share a boundary, so the column is one
+# cone; past the last profile it simply continues at the narrowest width rather than restarting.
+CAIRN_RADII = [(0.195, 0.15), (0.15, 0.1125), (0.1125, 0.085)]
+
+
+def ring_count(radius):
+    """How many stones close a ring of this radius.
+
+    A stone is one stone-length long and lies tangentially, so a ring needs about
+    ``2*pi*r / STONE_LENGTH`` of them to meet end to end. Always round *up*: one stone too many
+    closes the ring with a little overlap, which is what dry stone looks like, while one too few
+    leaves a gap you can see straight through. The radii above are chosen so that rounding up
+    still lands the base segment on exactly CAPACITY stones.
+    """
+    stone_length = STONE_DIMS_PX[0] * PX
+    return max(2, math.ceil(math.tau * radius / stone_length))
+
+
 def cairn_rings(segment):
     """(count, radius) per layer for one cairn segment, narrowing as the column rises.
 
-    Each segment picks up where the one below it left off — 0.30 down to 0.20, then 0.20 down to
-    0.13, then 0.13 to the cap — so a column is one cone rather than three stacked drums.
-
-    That is why the higher segments hold fewer stones. A ring of radius r fits about
-    ``2*pi*r / 0.3125`` stones, so a narrow course physically cannot take 32 of them, and a block
-    only has room for eight 2px layers. Rather than fake it with overlap, a cairn crown simply
-    holds less — which is what a real one does, and keeps every stone in the pile a stone you can
-    see.
+    Counts are derived from the radius rather than tabulated, so every ring closes by
+    construction. That is also why the higher segments hold fewer stones: a narrow course
+    physically cannot take as many, and faking it with heavy overlap would mean stones growing
+    through each other.
     """
-    profiles = [
-        ([6, 5, 5, 4, 4, 4, 4], 0.30, 0.20),
-        ([4, 4, 3, 3, 3, 3], 0.20, 0.13),
-        ([3, 3, 2, 2, 2], 0.13, 0.05),
+    outer, inner = CAIRN_RADII[min(segment, len(CAIRN_RADII) - 1)]
+    radii = [
+        outer + (inner - outer) * (i / (CAIRN_LAYERS - 1))
+        for i in range(CAIRN_LAYERS)
     ]
-    counts, outer, inner = profiles[min(segment, len(profiles) - 1)]
-    layers = len(counts)
-    return [
-        (counts[i], outer + (inner - outer) * (i / max(1, layers - 1)))
-        for i in range(layers)
-    ]
+    return [(ring_count(r), r) for r in radii]
 
 
 def build_cairn(rng, segment):
     """Rings of stones laid tangentially and tipped inward, so the segment reads as a cone."""
     slots = []
+    phase = rng.uniform(0, math.tau)
     for layer, (count, radius) in enumerate(cairn_rings(segment)):
-        # Offset each ring so stones bridge the gaps in the ring below rather than stacking into
-        # vertical seams.
-        phase = rng.uniform(0, math.tau) if layer == 0 else math.pi / max(1, count)
+        # Advance the phase half a stone every layer so each ring bridges the joints of the one
+        # below. The previous version recomputed the same offset for every layer above the first,
+        # which lined the joints up into vertical seams running the height of the segment.
+        if layer > 0:
+            phase += math.pi / count
         for i in range(count):
             theta = phase + math.tau * i / count
             x = 0.5 + radius * math.cos(theta)
@@ -239,8 +257,8 @@ def build_cairn(rng, segment):
                     yaw,
                     rng.uniform(-4.0, 4.0),
                     # Tip the outer face down so the cone sheds rather than looking like a stack
-                    # of hoops. Inner rings sit flatter.
-                    -7.0 * (radius / 0.30) + rng.uniform(-3.0, 3.0),
+                    # of hoops. Narrow rings sit flatter, in proportion to the widest course.
+                    -7.0 * (radius / CAIRN_RADII[0][0]) + rng.uniform(-3.0, 3.0),
                 )
             )
     if len(slots) > CAPACITY:

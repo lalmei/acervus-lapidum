@@ -46,11 +46,12 @@ A pile holds **32 stones** — that is what one block fits at vanilla's own visu
 has nowhere to go but the block above, and that is the whole cairn mechanic: a pile only becomes
 solid on top once it is full, so you finish a course before you start the next.
 
-The upper courses of a cairn hold **fewer** stones — 20, then 12. This is not an arbitrary nerf. A
-ring of radius `r` fits about `2 pi r / 0.3125` stones, and a block has room for eight two-pixel
-layers, so a narrow crown genuinely cannot hold 32 of them without stones growing through each
-other. Rather than fake it, the crown holds less. For the same reason, changing a full heap into a
-cairn crown is refused instead of quietly hiding the surplus.
+The upper courses of a cairn hold **fewer** stones — 25, then 20. This is not an arbitrary nerf. A
+ring of radius `r` needs about `2 pi r / 0.3125` stones to close, so a narrower course simply takes
+fewer, and every cairn ring is sized from its own radius rather than hand-picked. Each segment
+spends all eight of a block's two-pixel layers, so the segment above lands exactly on top of it
+with no daylight in between. Changing a full heap into a narrow cairn course is refused instead of
+quietly hiding the surplus.
 
 ## Where the geometry comes from
 
