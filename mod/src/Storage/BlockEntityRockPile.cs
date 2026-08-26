@@ -36,6 +36,9 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// </summary>
     private int segmentIndex;
 
+    /// <summary>Whether another pile is stacked directly on this one. Steps reads it; see ForMode.</summary>
+    private bool loadAbove;
+
     public BlockEntityRockPile()
     {
         inventory = new InventoryGeneric(RockPileUtil.MaxSlots, null, null, (_, inv) => new ItemSlot(inv));
@@ -95,6 +98,10 @@ public class BlockEntityRockPile : BlockEntityDisplay
         base.Initialize(api);
         LoadLayout(api);
         RecalcSegmentIndex();
+
+        // A pile saved before a layout changed size may be carrying stones the new one has no
+        // slot for. Hand them back on load rather than hiding them.
+        ShedSurplus();
         RegenCollision();
     }
 
@@ -120,13 +127,13 @@ public class BlockEntityRockPile : BlockEntityDisplay
         }
     }
 
-    private RockPileSlotTransform[] CurrentLayout() => layoutConfig.ForMode(layoutMode, segmentIndex);
+    private RockPileSlotTransform[] CurrentLayout() =>
+        layoutConfig.ForMode(layoutMode, segmentIndex, loadAbove);
 
     /// <summary>
-    /// Restyles the pile, if the stones in it fit the new layout.
+    /// Restyles the pile. A layout that holds fewer stones than are in the pile hands the extra
+    /// ones back rather than swallowing them — see <see cref="ShedSurplus"/>.
     /// </summary>
-    /// <returns>False when they do not — a full heap has more stones than a cairn crown holds,
-    /// and quietly hiding the surplus would break the one thing this pile promises.</returns>
     public bool SetLayoutMode(RockPileLayoutMode mode, bool propagate = true)
     {
         if (layoutMode == mode)
@@ -134,12 +141,8 @@ public class BlockEntityRockPile : BlockEntityDisplay
             return true;
         }
 
-        if (!CanHold(mode, StoneCount))
-        {
-            return false;
-        }
-
         layoutMode = mode;
+        ShedSurplus();
         RegenCollision();
         MarkMeshesDirty();
         MarkDirty(true);
@@ -158,10 +161,48 @@ public class BlockEntityRockPile : BlockEntityDisplay
         return true;
     }
 
-    /// <summary>Whether this pile, where it sits, could wear that layout with this many stones.</summary>
-    public bool CanHold(RockPileLayoutMode mode, int stoneCount)
+    /// <summary>
+    /// Hands back any stone the current layout has no slot for.
+    ///
+    /// Layouts hold wildly different amounts — 96 for masonry, 7 for a balanced stack — so
+    /// restyling a full pile routinely leaves stones with nowhere to sit. They pop out as items
+    /// at your feet. The alternative, keeping them in the inventory unrendered, would quietly
+    /// break the one thing this pile promises: that what you see is what is in it.
+    /// </summary>
+    private void ShedSurplus()
     {
-        return stoneCount <= layoutConfig.ForMode(mode, segmentIndex).Length;
+        // Server decides; the client would spawn ghosts of stones it does not own.
+        if (Api is null || Api.Side != EnumAppSide.Server)
+        {
+            return;
+        }
+
+        var keep = SlotCount;
+        var shed = 0;
+        for (var i = inventory.Count - 1; i >= 0 && StoneCount > keep; i--)
+        {
+            if (inventory[i].Empty)
+            {
+                continue;
+            }
+
+            var stone = inventory[i].TakeOut(1);
+            inventory[i].MarkDirty();
+            if (stone is not null)
+            {
+                Api.World.SpawnItemEntity(stone, Pos.ToVec3d().Add(0.5, 0.75, 0.5));
+                shed++;
+            }
+        }
+
+        if (shed > 0)
+        {
+            Api.World.Logger.Audit(
+                "Acervus Lapidum rock pile at {0} shed {1} stone(s) that the {2} layout has no room for.",
+                Pos,
+                shed,
+                layoutMode);
+        }
     }
 
     /// <summary>
@@ -172,12 +213,12 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// to be solid may do. It also would not read as anything — the bond already alternates every
     /// course, so a turned cube looks like an untuned one.
     /// </summary>
-    public float YawDeg => RockPileUtil.IsSolidLayout(layoutMode)
+    public float YawDeg => RockPileUtil.IsSolidLayout(layoutMode, loadAbove)
         ? 0f
         : orientation * (360f / RockPileUtil.OrientationSteps);
 
     /// <summary>Whether this pile is currently a solid block: masonry, and finished.</summary>
-    public bool IsSolid => RockPileUtil.IsSolidLayout(layoutMode) && IsFull;
+    public bool IsSolid => RockPileUtil.IsSolidLayout(layoutMode, loadAbove) && IsFull;
 
     public void SetOrientation(int value)
     {
@@ -241,8 +282,11 @@ public class BlockEntityRockPile : BlockEntityDisplay
     }
 
     /// <summary>
-    /// How far up a cairn this pile sits. Drives which segment profile it draws, so a column
-    /// tapers instead of repeating one shape.
+    /// Where this pile sits in its column: how far up, and whether it is carrying anything.
+    ///
+    /// Both change what it draws — a cairn tapers with height, a flight of steps turns into a
+    /// solid footing once loaded — so both are recomputed whenever a neighbour above or below
+    /// appears or goes away.
     /// </summary>
     public void RecalcSegmentIndex()
     {
@@ -261,14 +305,22 @@ public class BlockEntityRockPile : BlockEntityDisplay
             probe = probe.DownCopy();
         }
 
-        if (index == segmentIndex)
+        var carrying = Pos.Y + 1 < Api.World.BlockAccessor.MapSizeY
+                       && Api.World.BlockAccessor.GetBlockEntity(Pos.UpCopy()) is BlockEntityRockPile;
+
+        if (index == segmentIndex && carrying == loadAbove)
         {
             return;
         }
 
         segmentIndex = index;
+        loadAbove = carrying;
+
+        // The new profile may hold fewer stones than the old one did.
+        ShedSurplus();
         RegenCollision();
         MarkMeshesDirty();
+        MarkDirty(true);
         Api.World.BlockAccessor.MarkBlockDirty(Pos);
     }
 

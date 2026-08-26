@@ -64,22 +64,9 @@ public sealed class RockPileLayoutHotkey : ModSystem
             return false;
         }
 
-        // Step past any layout that could not hold what is already in the pile — a full heap
-        // does not fit a cairn crown — so F always lands on something that works.
-        var next = pile.LayoutMode;
-        for (var attempt = 0; attempt < Enum.GetValues<RockPileLayoutMode>().Length; attempt++)
-        {
-            next = RockPileUtil.NextLayoutMode(next);
-            if (pile.CanHold(next, pile.StoneCount))
-            {
-                break;
-            }
-        }
-
-        if (next == pile.LayoutMode)
-        {
-            return false;
-        }
+        // Every layout is reachable: one that holds fewer stones than the pile has simply drops
+        // the extra ones at your feet, so there is nothing here to step over.
+        var next = RockPileUtil.NextLayoutMode(pile.LayoutMode);
 
         // Apply locally so the pile redraws on the same frame; the server confirms or bounces it.
         pile.SetLayoutMode(next);

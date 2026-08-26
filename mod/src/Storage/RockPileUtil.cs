@@ -46,8 +46,19 @@ public static class RockPileUtil
     /// <summary>Rotation steps a pile can be turned through, at 45 degrees each.</summary>
     public const int OrientationSteps = 8;
 
-    /// <summary>Layouts that fill their block solidly enough to stand on and build against.</summary>
-    public static bool IsSolidLayout(RockPileLayoutMode mode) => mode == RockPileLayoutMode.Masonry;
+    /// <summary>
+    /// Whether a pile laid this way, in this position, fills its block solidly enough to stand on
+    /// and build against.
+    ///
+    /// Masonry always. Steps only once something is stacked on it: a flight of stairs taller than
+    /// one block is carried by solid stone underneath, so a steps pile with a load above stops
+    /// being a stair and becomes the footing for the one above it.
+    /// </summary>
+    public static bool IsSolidLayout(RockPileLayoutMode mode, bool loadAbove = false)
+    {
+        return mode == RockPileLayoutMode.Masonry
+               || (mode == RockPileLayoutMode.Steps && loadAbove);
+    }
 
     /// <summary>One stone a click. Vanilla moves two, but vanilla draws one rock per two stones.</summary>
     public const int TransferQuantity = 1;
@@ -273,11 +284,20 @@ public sealed class RockPileLayoutConfig
     public RockPileSlotTransform[] Cairn2 { get; set; } = [];
 
     /// <summary>
-    /// The slot poses for a pile in this mode at this height up a cairn column. Only Cairn cares
-    /// about the segment; every other layout looks the same wherever it sits.
+    /// The slot poses for a pile in this mode, at this height up a column, carrying or not
+    /// carrying something above it.
+    ///
+    /// Cairn is the one that reads the segment, narrowing as it climbs. Steps is the one that
+    /// reads the load: put a pile on a flight of stairs and the flight becomes the solid footing
+    /// for it, so the stair carries on up rather than starting again at the bottom of every block.
     /// </summary>
-    public RockPileSlotTransform[] ForMode(RockPileLayoutMode mode, int segment)
+    public RockPileSlotTransform[] ForMode(RockPileLayoutMode mode, int segment, bool loadAbove = false)
     {
+        if (mode == RockPileLayoutMode.Steps && loadAbove && Masonry is { Length: > 0 })
+        {
+            return Masonry;
+        }
+
         var configured = mode switch
         {
             RockPileLayoutMode.Neat => Neat,

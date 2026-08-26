@@ -57,9 +57,18 @@ SOLID_LAYOUTS = frozenset({"masonry"})
 # A pile turns in 45 degree steps.
 ORIENTATION_STEPS = 8
 
+
 # Cairn segments get narrower the higher up the column they sit. Beyond this index they stay at
 # the narrowest profile, so a very tall cairn keeps a spire rather than pinching to nothing.
 CAIRN_SEGMENTS = 3
+
+# Layouts built to stack into something taller than one block. Each has to reach the ceiling, or
+# the segment above it hangs in mid-air — the fault that made stacked cairns look wrong. Steps is
+# not here on purpose: a flight is meant to be short at the front, and a loaded one swaps onto the
+# masonry slots instead, which do fill the block.
+STACKING_LAYOUTS = frozenset({"wall", "masonry"}) | {
+    f"cairn{i}" for i in range(CAIRN_SEGMENTS)
+}
 
 # Vintage Story composes a shape element's own rotation as Rx . Ry . Rz about its rotationOrigin.
 ELEMENT_ROTATION_ORDER = "XYZ"
@@ -264,7 +273,11 @@ def build_cairn(rng, segment):
 
 
 def build_wall(rng):
-    """Two courses of stones running along X, joints staggered course to course.
+    """Two leaves of stone running along X, joints staggered course to course.
+
+    Uses the block's full eight courses, which is what lets walls stack: a wall that stopped short
+    would leave the segment above it hanging in the air, the way the cairn once did. Stack as many
+    as you like and the courses run straight through the joins.
 
     The block entity yaws the whole set by the orientation stored on the pile, so this only ever
     has to describe the wall running west to east.
@@ -273,13 +286,11 @@ def build_wall(rng):
     z_rows = [0.5 - 0.13, 0.5 + 0.13]
 
     slots = []
-    for layer in range(LAYERS - 3):
+    for layer in range(LAYERS):
         # Half-stone offset on alternate courses: the joints break, the way a wall is laid.
         stagger = 0.0 if layer % 2 == 0 else 0.5 * (1.0 / per_row)
         for row in range(rows):
             for i in range(per_row):
-                if len(slots) == HEAP_CAPACITY:
-                    break
                 x = min(0.93, max(0.07, (i + 0.5) / per_row + stagger))
                 slots.append(
                     slot(
@@ -395,10 +406,15 @@ def build_spiral(rng):
 
 
 def build_steps(rng):
-    """A stair of four steps, each two courses higher than the last.
+    """A flight of four steps, each two courses higher than the last.
 
     Solid all the way down — every stone rests on stone, not on air — so it works as a mounting
     block or a stile beside a wall rather than being purely decorative.
+
+    A stair taller than one block is built the way a real one is: this flight goes on top, and the
+    pile underneath fills in solid to carry it. The block entity swaps a steps pile onto the
+    masonry slots as soon as something is stacked above it, so the climb continues instead of
+    restarting at the bottom of every block.
     """
     steps, across = 4, 3
     slots = []

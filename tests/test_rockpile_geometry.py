@@ -204,18 +204,27 @@ class TestCommittedConfig(unittest.TestCase):
             with self.subTest(joint=f"cairn{segment}->cairn{segment + 1}"):
                 self.assertLessEqual(starts_at, ends_at + 1e-9)
 
-    def test_cairn_segments_leave_no_gap_between_blocks(self):
-        """Every cairn segment must fill its block to the ceiling.
+    def test_stacking_layouts_leave_no_gap_between_blocks(self):
+        """Anything meant to stack must fill its block to the ceiling.
 
-        A segment that stops short hangs the one above it in mid-air: the middle segment once used
-        six of the eight available layers and left a quarter-block of daylight under the crown,
-        which is exactly what a stacked cairn looked wrong for.
+        A layout that stops short hangs the one above it in mid-air: the middle cairn segment once
+        used six of the eight available layers and left a quarter-block of daylight under the
+        crown, and the wall had the same fault before it was made stackable.
         """
-        for segment in range(geo.CAIRN_SEGMENTS):
-            slots = self.layouts[f"cairn{segment}"]
+        for name in geo.STACKING_LAYOUTS:
+            slots = self.layouts[name]
             top = max(s["y"] for s in slots) + geo.STONE_HEIGHT
-            with self.subTest(segment=segment):
+            with self.subTest(layout=name):
                 self.assertAlmostEqual(top, 1.0, places=6)
+
+    def test_a_wall_is_uniform_all_the_way_up(self):
+        """Walls stack, so every course has to be the same — a thinner top course would show as a
+        seam at every block join in a tall wall."""
+        by_layer = {}
+        for s in self.layouts["wall"]:
+            by_layer.setdefault(round(s["y"], 5), []).append(s)
+        self.assertEqual(len(by_layer), geo.LAYERS)
+        self.assertEqual({len(course) for course in by_layer.values()}, {6})
 
     def test_cairn_rings_always_close(self):
         """A ring with under 100% coverage has a hole you can see straight through."""

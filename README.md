@@ -56,9 +56,9 @@ decided:
 | --- | --- | --- |
 | Heap, neat course, scattered | 32 | vanilla's own loose-pile density |
 | Spiral | 32 | |
-| Wall | 30 | five courses of six |
+| Wall | 48 | eight courses of six — stacks into a taller wall |
 | Cairn | 40 / 28 / 19 | footing, body, shoulder — see below |
-| Steps | 60 | solid stone all the way down |
+| Steps | 60 | a flight; fills solid to 96 once loaded |
 | Hearth ring | 18 | hollow middle |
 | Twin columns | 16 | |
 | Balanced stack | 7 | |
@@ -68,8 +68,17 @@ The cairn narrows as it climbs because a ring of `N` stones laid end to end has 
 radius, `N × 0.3125 / 2π`. Choosing the count chooses the width, every ring closes with no gap to
 see through, and the taper is simply the counts falling: six to a course on the ground, two at the
 top. Each segment spends all eight of a block's two-pixel layers, so the one above lands flush on
-it. Restyling a pile into a layout that holds fewer stones than it currently has is refused rather
-than quietly hiding the surplus.
+it — which is also what lets **walls stack**. Put one wall pile on a full one and the courses run
+straight through the join, as high as you care to build.
+
+Restyling a pile into a layout that holds fewer stones simply **drops the extra ones at your feet**.
+A balanced stack holds seven and masonry holds ninety-six, so changing your mind about a full pile
+routinely leaves stones over; they pop out as items rather than sitting in the pile unrendered,
+which would break the one thing this pile promises.
+
+**Stairs taller than one block** are built the way real ones are. Stack a pile on a flight of steps
+and the flight becomes the solid footing carrying it, so the climb continues instead of restarting
+at the bottom of every block. Take the load off again and it goes back to being a flight.
 
 Masonry is the odd one out: it does not turn. A coursed cube coaxed 45° would swing its corners a
 fifth of a block into its neighbour, which is not something a block claiming to be solid may do.
