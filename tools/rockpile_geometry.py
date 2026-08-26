@@ -193,8 +193,16 @@ def load_heap(game_path: Path):
 # --- analytic layouts -----------------------------------------------------------------------------
 
 
-def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0):
-    return {
+def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0, x_unbonded=None):
+    """One stone's pose.
+
+    ``x_unbonded`` marks a **bond stone**: one that straddles the pile's own -X face so it ties
+    into the pile next door, the way a through stone ties two courses of a wall together. Without
+    them every block boundary shows an unbroken vertical joint on every course, because each pile
+    is otherwise a self-contained brick. The value is where the stone sits instead when there is
+    no pile next door to tie into, so a lone wall does not have stones hanging out of its end.
+    """
+    record = {
         "x": round(x, 5),
         "y": round(y, 5),
         "z": round(z, 5),
@@ -202,6 +210,13 @@ def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0):
         "pitchDeg": round(pitch, 2),
         "rollDeg": round(roll, 2),
     }
+    if x_unbonded is not None:
+        record["xUnbonded"] = round(x_unbonded, 5)
+    return record
+
+
+# Where a bond stone retreats to when it has nothing to tie into: flush with the -X face.
+FLUSH_X = STONE_LENGTH / 2
 
 
 def build_neat(rng):
@@ -282,16 +297,23 @@ def build_wall(rng):
     The block entity yaws the whole set by the orientation stored on the pile, so this only ever
     has to describe the wall running west to east.
     """
-    per_row, rows = 3, 2
+    per_row, rows = 4, 2
+    spacing = 1.0 / per_row
     z_rows = [0.5 - 0.13, 0.5 + 0.13]
 
     slots = []
     for layer in range(LAYERS):
-        # Half-stone offset on alternate courses: the joints break, the way a wall is laid.
-        stagger = 0.0 if layer % 2 == 0 else 0.5 * (1.0 / per_row)
+        # Four to a course at a quarter-block spacing: the stones are longer than the gap between
+        # them, so a course is continuous rather than three stones with slivers of daylight
+        # between, which is what the old three-per-course spacing left.
+        bonded_course = layer % 2 == 1
         for row in range(rows):
             for i in range(per_row):
-                x = min(0.93, max(0.07, (i + 0.5) / per_row + stagger))
+                # Alternate courses start half a stone back, putting one stone across the joint
+                # with the pile behind. That is the stone that stops a run of walls reading as
+                # separate blocks stood in a line.
+                x = i * spacing if bonded_course else (i + 0.5) * spacing
+                bond = bonded_course and i == 0
                 slots.append(
                     slot(
                         x,
@@ -300,6 +322,7 @@ def build_wall(rng):
                         rng.uniform(-5.0, 5.0),
                         rng.uniform(-3.0, 3.0),
                         rng.uniform(-4.0, 4.0),
+                        x_unbonded=FLUSH_X if bond else None,
                     )
                 )
     return slots
@@ -336,18 +359,26 @@ def build_masonry(rng):
     # No jitter anywhere in here. Every other layout gets a degree or two of slop to look laid by
     # hand, but this one has to fit its own cube exactly to be allowed to call itself solid, and a
     # dressed, coursed wall is square in any case.
+    #
+    # Every course runs the same way now. The old version turned alternate courses 90 degrees,
+    # which bonded a course to the one above it but left the vertical joint at each block boundary
+    # running unbroken from top to bottom. Bonding along the wall's length is what actually matters
+    # between blocks, so courses stagger along X instead and the back one carries a bond stone.
+    cols, rows = 3, 4
     slots = []
     for layer in range(LAYERS):
-        crossed = layer % 2 == 1
-        cols, rows = (4, 3) if crossed else (3, 4)
+        bonded_course = layer % 2 == 1
         for col in range(cols):
             for row in range(rows):
+                x = col / cols if bonded_course else (col + 0.5) / cols
+                bond = bonded_course and col == 0
                 slots.append(
                     slot(
-                        (col + 0.5) / cols,
+                        x,
                         layer * STONE_HEIGHT,
                         (row + 0.5) / rows,
-                        90.0 if crossed else 0.0,
+                        0.0,
+                        x_unbonded=FLUSH_X if bond else None,
                     )
                 )
     return slots

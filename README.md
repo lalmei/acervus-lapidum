@@ -56,7 +56,7 @@ decided:
 | --- | --- | --- |
 | Heap, neat course, scattered | 32 | vanilla's own loose-pile density |
 | Spiral | 32 | |
-| Wall | 48 | eight courses of six — stacks into a taller wall |
+| Wall | 64 | eight courses of eight — stacks, and bonds to its neighbours |
 | Cairn | 40 / 28 / 19 | footing, body, shoulder — see below |
 | Steps | 60 | a flight; fills solid to 96 once loaded |
 | Hearth ring | 18 | hollow middle |
@@ -75,6 +75,12 @@ Restyling a pile into a layout that holds fewer stones simply **drops the extra 
 A balanced stack holds seven and masonry holds ninety-six, so changing your mind about a full pile
 routinely leaves stones over; they pop out as items rather than sitting in the pile unrendered,
 which would break the one thing this pile promises.
+
+Walls and masonry **bond to the pile next door**. Alternate courses lay a stone across the joint,
+the way a through stone ties a real wall together, so a run of them reads as one wall instead of
+separate blocks stood in a line. A pile with nothing beside it tucks that stone back in, so a lone
+wall has no stones hanging out of its end. Bonding moves stones rather than adding them, so a
+neighbour arriving or going never changes how many stones a pile holds.
 
 Every pile keeps **its own** layout and its own facing. Stack whatever you like on whatever you
 like — a masonry footing under a cairn, steps against the end of a wall — and restyling the one you

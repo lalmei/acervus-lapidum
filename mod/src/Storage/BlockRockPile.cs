@@ -111,8 +111,9 @@ public class BlockRockPile : Block
     {
         base.OnNeighbourBlockChange(world, pos, neibpos);
 
-        if (neibpos.Y != pos.Y
-            && world.BlockAccessor.GetBlockEntity(pos) is BlockEntityRockPile pile)
+        // Any neighbour matters now, not just the vertical ones: one beside us decides whether our
+        // bond stones have anything to tie into.
+        if (world.BlockAccessor.GetBlockEntity(pos) is BlockEntityRockPile pile)
         {
             pile.RecalcSegmentIndex();
         }

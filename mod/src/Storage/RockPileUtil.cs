@@ -237,6 +237,23 @@ public sealed class RockPileSlotTransform
 
     [JsonProperty("rollDeg")]
     public float RollDeg { get; set; }
+
+    /// <summary>
+    /// Set on a <em>bond stone</em>: one placed across the pile's own -X face so it ties into the
+    /// pile next door, the way a through stone ties a wall together. Without them every block
+    /// boundary shows an unbroken vertical joint on every course, because each pile is otherwise
+    /// a self-contained brick.
+    ///
+    /// The value is where the stone sits instead when there is nothing next door to tie into, so
+    /// a lone wall does not have stones hanging out of its end. Note this moves a stone rather
+    /// than adding one: bonding never changes how many stones a pile holds, so neighbours coming
+    /// and going cannot strand or demand any.
+    /// </summary>
+    [JsonProperty("xUnbonded")]
+    public float? XUnbonded { get; set; }
+
+    /// <summary>Where this stone sits, given whether the pile has something to tie into.</summary>
+    public float XFor(bool bonded) => bonded || XUnbonded is null ? X : XUnbonded.Value;
 }
 
 public sealed class RockPileLayoutConfig

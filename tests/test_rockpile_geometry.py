@@ -25,6 +25,15 @@ def committed():
     return json.loads(COMMITTED.read_text())
 
 
+def standalone(s):
+    """A slot as a lone pile draws it, with any bond stone tucked back in.
+
+    Bond stones deliberately reach into the pile next door — that is the whole point of them — so
+    the bounds worth policing are the ones a pile with no neighbours occupies.
+    """
+    return {**s, "x": s.get("xUnbonded", s["x"])}
+
+
 def spun(s, yaw_deg):
     """A slot as the pile draws it once turned by the pile's own orientation."""
     dx, dz = s["x"] - 0.5, s["z"] - 0.5
@@ -86,18 +95,78 @@ class TestCommittedConfig(unittest.TestCase):
             with self.subTest(height=height):
                 self.assertEqual(len(course), 12)
 
-    def test_masonry_courses_alternate_direction(self):
-        """A running bond: each course is laid across the one below, so the joints never line up
-        through the block."""
-        by_layer = {}
-        for s in self.layouts["masonry"]:
-            by_layer.setdefault(round(s["y"], 5), []).append(s)
-        yaws = [
-            round(sum(abs(s["yawDeg"]) for s in course) / len(course))
-            for _, course in sorted(by_layer.items())
-        ]
-        for lower, upper in zip(yaws, yaws[1:]):
-            self.assertNotEqual(lower, upper)
+    def test_bonding_layouts_stagger_their_courses(self):
+        """A running bond: each course starts half a stone off the one below, so no vertical
+        joint runs through more than one course."""
+        for name in ("masonry", "wall"):
+            by_layer = {}
+            for s in self.layouts[name]:
+                by_layer.setdefault(round(s["y"], 5), []).append(s["x"])
+            starts = [min(xs) for _, xs in sorted(by_layer.items())]
+            for lower, upper in zip(starts, starts[1:]):
+                with self.subTest(layout=name):
+                    self.assertNotAlmostEqual(lower, upper)
+
+    def test_bonding_layouts_carry_a_stone_across_the_joint(self):
+        """The stone that ties one pile to the next. Without it every block boundary shows an
+        unbroken vertical joint, which is what made a run of walls read as separate blocks."""
+        for name in ("masonry", "wall"):
+            bonds = [s for s in self.layouts[name] if "xUnbonded" in s]
+            with self.subTest(layout=name):
+                self.assertTrue(bonds, "no bond stones at all")
+                for s in bonds:
+                    # It has to actually cross the face to tie anything together...
+                    self.assertLess(s["x"] - geo.STONE_LENGTH / 2, 0.0)
+                    # ...and it has to tuck fully inside when there is nothing to tie to.
+                    self.assertGreaterEqual(s["xUnbonded"] - geo.STONE_LENGTH / 2, -1e-9)
+
+    def test_the_joint_between_two_piles_is_bridged(self):
+        """Lay two piles side by side and the seam between them must not run top to bottom.
+
+        A stone is 0.3125 long and a block is 1.0 wide, so a course cannot tile a block exactly;
+        what matters is that the joint at the block boundary is covered by the course above or
+        below it, rather than every course stopping dead at the same place. The bond courses are
+        the ones that cover it.
+        """
+        half = geo.STONE_LENGTH / 2
+        for name in ("masonry", "wall"):
+            by_layer = {}
+            for s in self.layouts[name]:
+                by_layer.setdefault(round(s["y"], 5), []).append(s)
+
+            bridged = []
+            for height, course in sorted(by_layer.items()):
+                # Tile this course at x and x+1, the way two piles side by side render it.
+                spans = [
+                    (s["x"] + offset - half, s["x"] + offset + half)
+                    for s in course
+                    for offset in (0.0, 1.0)
+                ]
+                bridged.append(any(a < 1.0 < b for a, b in spans))
+
+            with self.subTest(layout=name):
+                self.assertTrue(any(bridged), "no course bridges the joint at all")
+                # No two courses in a row may both leave the joint open, or the seam shows.
+                for lower, upper in zip(bridged, bridged[1:]):
+                    self.assertTrue(lower or upper)
+
+    def test_a_course_has_no_hole_wide_enough_to_see_through(self):
+        """Stones may not tile a block exactly, but the slivers left over have to stay slivers."""
+        half = geo.STONE_LENGTH / 2
+        widest_allowed = 0.03  # under half a texture pixel at the game's 16px stone
+
+        for name in ("masonry", "wall"):
+            by_layer = {}
+            for s in self.layouts[name]:
+                by_layer.setdefault(round(s["y"], 5), []).append(s["x"])
+
+            for height, xs in by_layer.items():
+                spans = sorted((x - half, x + half) for x in xs)
+                reach = spans[0][1]
+                for start_x, end_x in spans[1:]:
+                    with self.subTest(layout=name, height=height):
+                        self.assertLessEqual(max(0.0, start_x - reach), widest_allowed)
+                    reach = max(reach, end_x)
 
     def test_cairn_segments_hold_fewer_stones_as_they_narrow(self):
         counts = [len(self.layouts[f"cairn{i}"]) for i in range(geo.CAIRN_SEGMENTS)]
@@ -148,7 +217,7 @@ class TestCommittedConfig(unittest.TestCase):
         for name, slots in self.layouts.items():
             for i, s in enumerate(slots):
                 with self.subTest(layout=name, slot=i):
-                    self.assertLessEqual(overhang(s), budget + 1e-6)
+                    self.assertLessEqual(overhang(standalone(s)), budget + 1e-6)
 
     def test_solid_layouts_stay_entirely_inside_their_block(self):
         """Masonry claims to be a solid block — walkable, buildable, face-culling. A stone poking
@@ -157,7 +226,7 @@ class TestCommittedConfig(unittest.TestCase):
         for name in geo.SOLID_LAYOUTS:
             for i, s in enumerate(self.layouts[name]):
                 with self.subTest(layout=name, slot=i):
-                    self.assertAlmostEqual(overhang(s), 0.0, places=6)
+                    self.assertAlmostEqual(overhang(standalone(s)), 0.0, places=6)
 
     def test_turning_a_pile_never_makes_it_spill_much_further(self):
         """Piles turn in 45 degree steps, and a square arrangement is at its widest on the
@@ -169,7 +238,7 @@ class TestCommittedConfig(unittest.TestCase):
                 continue
             for step in range(geo.ORIENTATION_STEPS):
                 yaw = step * (360 / geo.ORIENTATION_STEPS)
-                worst = max(overhang(spun(s, yaw)) for s in slots)
+                worst = max(overhang(spun(standalone(s), yaw)) for s in slots)
                 with self.subTest(layout=name, yaw=yaw):
                     self.assertLessEqual(worst, budget)
 
@@ -224,7 +293,7 @@ class TestCommittedConfig(unittest.TestCase):
         for s in self.layouts["wall"]:
             by_layer.setdefault(round(s["y"], 5), []).append(s)
         self.assertEqual(len(by_layer), geo.LAYERS)
-        self.assertEqual({len(course) for course in by_layer.values()}, {6})
+        self.assertEqual({len(course) for course in by_layer.values()}, {8})
 
     def test_cairn_rings_always_close(self):
         """A ring with under 100% coverage has a hole you can see straight through."""

@@ -39,6 +39,12 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// <summary>Whether another pile is stacked directly on this one. Steps reads it; see ForMode.</summary>
     private bool loadAbove;
 
+    /// <summary>
+    /// Whether the pile behind this one, along its own -X face, is laid the same way — so bond
+    /// stones have something to tie into. See <see cref="RockPileSlotTransform.XUnbonded"/>.
+    /// </summary>
+    private bool bondedBack;
+
     public BlockEntityRockPile()
     {
         inventory = new InventoryGeneric(RockPileUtil.MaxSlots, null, null, (_, inv) => new ItemSlot(inv));
@@ -225,6 +231,8 @@ public class BlockEntityRockPile : BlockEntityDisplay
         orientation = ((value % steps) + steps) % steps;
     }
 
+    /// <summary>Turning changes which way "behind" points, so bonding has to be reconsidered.</summary>
+
     /// <summary>
     /// Turns the pile to a given orientation.
     ///
@@ -239,6 +247,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
     public void TurnTo(int value)
     {
         SetOrientation(value);
+        RecalcSegmentIndex();
         RegenCollision();
         MarkMeshesDirty();
         MarkDirty(true);
@@ -271,14 +280,16 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
         var carrying = Pos.Y + 1 < Api.World.BlockAccessor.MapSizeY
                        && Api.World.BlockAccessor.GetBlockEntity(Pos.UpCopy()) is BlockEntityRockPile;
+        var tiedIn = HasMatchingPileBehind();
 
-        if (index == segmentIndex && carrying == loadAbove)
+        if (index == segmentIndex && carrying == loadAbove && tiedIn == bondedBack)
         {
             return;
         }
 
         segmentIndex = index;
         loadAbove = carrying;
+        bondedBack = tiedIn;
 
         // The new profile may hold fewer stones than the old one did.
         ShedSurplus();
@@ -286,6 +297,33 @@ public class BlockEntityRockPile : BlockEntityDisplay
         MarkMeshesDirty();
         MarkDirty(true);
         Api.World.BlockAccessor.MarkBlockDirty(Pos);
+    }
+
+    /// <summary>
+    /// Whether the block along this pile's own -X face holds a pile laid the same way.
+    ///
+    /// Only square orientations can bond. A pile turned to a diagonal has no neighbour squarely
+    /// behind it to tie into, so its bond stones stay tucked in rather than jutting into the
+    /// corner of whatever is there.
+    /// </summary>
+    private bool HasMatchingPileBehind()
+    {
+        if (Api is null || orientation % 2 != 0)
+        {
+            return false;
+        }
+
+        // Local -X, turned by the pile's own yaw. The render chain maps a local offset (dx, dz)
+        // to (cos.dx + sin.dz, -sin.dx + cos.dz), so local -X lands on (-cos, sin).
+        var radians = YawDeg * GameMath.DEG2RAD;
+        var behind = Pos.AddCopy(
+            (int)Math.Round(-Math.Cos(radians)),
+            0,
+            (int)Math.Round(Math.Sin(radians)));
+
+        return Api.World.BlockAccessor.GetBlockEntity(behind) is BlockEntityRockPile neighbour
+               && neighbour.LayoutMode == layoutMode
+               && neighbour.Orientation == orientation;
     }
 
     /// <summary>Empty-handed layout change, sent by <see cref="RockPileLayoutHotkey"/>.</summary>
@@ -558,7 +596,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
                 .Translate(0.5f, 0f, 0.5f)
                 .RotateYDeg(yaw)
                 .Translate(-0.5f, 0f, -0.5f)
-                .Translate(pose.X, pose.Y, pose.Z)
+                .Translate(pose.XFor(bondedBack), pose.Y, pose.Z)
                 .RotateYDeg(pose.YawDeg)
                 .RotateXDeg(pose.PitchDeg)
                 .RotateZDeg(pose.RollDeg)
