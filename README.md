@@ -78,9 +78,14 @@ which would break the one thing this pile promises.
 
 Walls and masonry **bond to the pile next door**. Alternate courses lay a stone across the joint,
 the way a through stone ties a real wall together, so a run of them reads as one wall instead of
-separate blocks stood in a line. A pile with nothing beside it tucks that stone back in, so a lone
-wall has no stones hanging out of its end. Bonding moves stones rather than adding them, so a
-neighbour arriving or going never changes how many stones a pile holds.
+separate blocks stood in a line. Each pile lays the stone crossing its own near joint and stops
+short at its far one, where the pile ahead reaches back over — so every joint gets exactly one
+bond stone rather than two fighting for the same space.
+
+Both ends are considered, so a lone wall or a single masonry block is **symmetric**: flush at both
+ends, with nothing hanging out into thin air, and it looks the same whichever way you turn it.
+Bonding moves stones rather than adding them, so a neighbour arriving or going never changes how
+many stones a pile holds.
 
 Every pile keeps **its own** layout and its own facing. Stack whatever you like on whatever you
 like — a masonry footing under a cairn, steps against the end of a wall — and restyling the one you

@@ -193,14 +193,18 @@ def load_heap(game_path: Path):
 # --- analytic layouts -----------------------------------------------------------------------------
 
 
-def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0, x_unbonded=None):
+def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0, x_bond=None):
     """One stone's pose.
 
-    ``x_unbonded`` marks a **bond stone**: one that straddles the pile's own -X face so it ties
-    into the pile next door, the way a through stone ties two courses of a wall together. Without
-    them every block boundary shows an unbroken vertical joint on every course, because each pile
-    is otherwise a self-contained brick. The value is where the stone sits instead when there is
-    no pile next door to tie into, so a lone wall does not have stones hanging out of its end.
+    ``x_bond`` belongs to a **bond course**: one that lays a stone across the joint with the pile
+    next door, the way a through stone ties a wall together. Without it every block boundary shows
+    an unbroken vertical joint on every course, because each pile is otherwise a self-contained
+    brick.
+
+    A course has to know about *both* of its ends, not just one. It carries four positions, picked
+    by whether there is a pile behind and a pile ahead — ``[none, ahead, behind, both]``. Reasoning
+    about the -X neighbour alone left the far end of a run notched open while the near end sat
+    flush, so the same wall looked different from each end and flipped when you turned it round.
     """
     record = {
         "x": round(x, 5),
@@ -210,13 +214,38 @@ def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0, x_unbonded=None):
         "pitchDeg": round(pitch, 2),
         "rollDeg": round(roll, 2),
     }
-    if x_unbonded is not None:
-        record["xUnbonded"] = round(x_unbonded, 5)
+    if x_bond is not None:
+        record["xBond"] = [round(v, 5) for v in x_bond]
     return record
 
 
-# Where a bond stone retreats to when it has nothing to tie into: flush with the -X face.
-FLUSH_X = STONE_LENGTH / 2
+def course_positions(count, behind, ahead):
+    """Where a course's stones sit, given what it has to tie into at each end.
+
+    The span it must cover runs from its own -X face to its +X face, except that a bonded end
+    hands part of the job over: a stone crossing the near joint starts half a stone early, and a
+    neighbour ahead brings its own bond stone back over our far end, so we only need to reach the
+    point where that one starts.
+    """
+    half = STONE_LENGTH / 2
+    start = -half if behind else 0.0
+    end = (1.0 - half) if ahead else 1.0
+
+    if count == 1:
+        return [(start + end) / 2]
+
+    first, last = start + half, end - half
+    step = (last - first) / (count - 1)
+    return [first + i * step for i in range(count)]
+
+
+def bond_course(count, index):
+    """The four X positions for stone ``index`` of a bond course, in [none, ahead, behind, both]."""
+    return [
+        course_positions(count, behind, ahead)[index]
+        for behind in (False, True)
+        for ahead in (False, True)
+    ]
 
 
 def build_neat(rng):
@@ -306,23 +335,21 @@ def build_wall(rng):
         # Four to a course at a quarter-block spacing: the stones are longer than the gap between
         # them, so a course is continuous rather than three stones with slivers of daylight
         # between, which is what the old three-per-course spacing left.
+        # Alternate courses tie into the piles either side, putting a stone across each joint.
+        # That is what stops a run of walls reading as separate blocks stood in a line.
         bonded_course = layer % 2 == 1
         for row in range(rows):
             for i in range(per_row):
-                # Alternate courses start half a stone back, putting one stone across the joint
-                # with the pile behind. That is the stone that stops a run of walls reading as
-                # separate blocks stood in a line.
-                x = i * spacing if bonded_course else (i + 0.5) * spacing
-                bond = bonded_course and i == 0
+                x_bond = bond_course(per_row, i) if bonded_course else None
                 slots.append(
                     slot(
-                        x,
+                        x_bond[3] if x_bond else (i + 0.5) * spacing,
                         layer * STONE_HEIGHT,
                         z_rows[row] + rng.uniform(-0.015, 0.015),
                         rng.uniform(-5.0, 5.0),
                         rng.uniform(-3.0, 3.0),
                         rng.uniform(-4.0, 4.0),
-                        x_unbonded=FLUSH_X if bond else None,
+                        x_bond=x_bond,
                     )
                 )
     return slots
@@ -369,16 +396,15 @@ def build_masonry(rng):
     for layer in range(LAYERS):
         bonded_course = layer % 2 == 1
         for col in range(cols):
+            x_bond = bond_course(cols, col) if bonded_course else None
             for row in range(rows):
-                x = col / cols if bonded_course else (col + 0.5) / cols
-                bond = bonded_course and col == 0
                 slots.append(
                     slot(
-                        x,
+                        x_bond[3] if x_bond else (col + 0.5) / cols,
                         layer * STONE_HEIGHT,
                         (row + 0.5) / rows,
                         0.0,
-                        x_unbonded=FLUSH_X if bond else None,
+                        x_bond=x_bond,
                     )
                 )
     return slots

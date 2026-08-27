@@ -25,13 +25,30 @@ def committed():
     return json.loads(COMMITTED.read_text())
 
 
-def standalone(s):
-    """A slot as a lone pile draws it, with any bond stone tucked back in.
+# Index into a slot's xBond positions: [none, ahead, behind, both].
+BOND_NONE, BOND_AHEAD, BOND_BEHIND, BOND_BOTH = 0, 1, 2, 3
+
+
+def posed(s, bond=BOND_NONE):
+    """A slot as it draws with the given neighbours present.
 
     Bond stones deliberately reach into the pile next door — that is the whole point of them — so
-    the bounds worth policing are the ones a pile with no neighbours occupies.
+    the bounds worth policing are the ones a pile with no neighbours occupies, which is the
+    default here.
     """
-    return {**s, "x": s.get("xUnbonded", s["x"])}
+    return {**s, "x": s["xBond"][bond]} if "xBond" in s else dict(s)
+
+
+def standalone(s):
+    return posed(s, BOND_NONE)
+
+
+def courses_of(slots):
+    """Slots grouped by height."""
+    by_layer = {}
+    for s in slots:
+        by_layer.setdefault(round(s["y"], 5), []).append(s)
+    return by_layer
 
 
 def spun(s, yaw_deg):
@@ -107,18 +124,51 @@ class TestCommittedConfig(unittest.TestCase):
                 with self.subTest(layout=name):
                     self.assertNotAlmostEqual(lower, upper)
 
-    def test_bonding_layouts_carry_a_stone_across_the_joint(self):
-        """The stone that ties one pile to the next. Without it every block boundary shows an
-        unbroken vertical joint, which is what made a run of walls read as separate blocks."""
+    def test_bonding_layouts_carry_a_stone_across_each_joint(self):
+        """The stone that ties one pile to the next, at whichever ends have a pile to tie to."""
+        half = geo.STONE_LENGTH / 2
         for name in ("masonry", "wall"):
-            bonds = [s for s in self.layouts[name] if "xUnbonded" in s]
+            course = [s for s in self.layouts[name] if "xBond" in s]
             with self.subTest(layout=name):
-                self.assertTrue(bonds, "no bond stones at all")
-                for s in bonds:
-                    # It has to actually cross the face to tie anything together...
-                    self.assertLess(s["x"] - geo.STONE_LENGTH / 2, 0.0)
-                    # ...and it has to tuck fully inside when there is nothing to tie to.
-                    self.assertGreaterEqual(s["xUnbonded"] - geo.STONE_LENGTH / 2, -1e-9)
+                self.assertTrue(course, "no bond courses at all")
+
+            for s in course:
+                with self.subTest(layout=name, slot=s["y"]):
+                    self.assertEqual(len(s["xBond"]), 4)
+
+            # Each pile lays the stone that crosses its OWN near joint, and correspondingly stops
+            # short at its far one because the pile ahead reaches back over it. That is what keeps
+            # exactly one bond stone in every joint rather than two fighting for the same space.
+            for bond, behind, ahead in [
+                (BOND_NONE, False, False),
+                (BOND_AHEAD, False, True),
+                (BOND_BEHIND, True, False),
+                (BOND_BOTH, True, True),
+            ]:
+                xs = [s["xBond"][bond] for s in course]
+                west = min(xs) - half
+                east = max(xs) + half
+                with self.subTest(layout=name, bond=bond):
+                    # Near end: crosses the face when there is something to tie into, else flush.
+                    self.assertAlmostEqual(west, -half if behind else 0.0, places=5)
+                    # Far end: stops where the neighbour's own bond stone begins, else flush.
+                    self.assertAlmostEqual(east, 1.0 - half if ahead else 1.0, places=5)
+
+    def test_a_lone_bonded_pile_is_symmetric_end_to_end(self):
+        """With no neighbours a wall or a masonry block must look the same from either end.
+
+        It did not: the course only reasoned about the pile behind it, so the far end was left
+        notched open — by 0.094 on a wall and 0.177 on masonry — while the near end sat flush.
+        Turning the pile round swapped which end was which.
+        """
+        half = geo.STONE_LENGTH / 2
+        for name in ("masonry", "wall"):
+            for height, course in courses_of(self.layouts[name]).items():
+                xs = [posed(s)["x"] for s in course]
+                west = min(xs) - half
+                east = 1.0 - (max(xs) + half)
+                with self.subTest(layout=name, height=height):
+                    self.assertAlmostEqual(west, east, places=5)
 
     def test_the_joint_between_two_piles_is_bridged(self):
         """Lay two piles side by side and the seam between them must not run top to bottom.
@@ -136,11 +186,12 @@ class TestCommittedConfig(unittest.TestCase):
 
             bridged = []
             for height, course in sorted(by_layer.items()):
-                # Tile this course at x and x+1, the way two piles side by side render it.
+                # Tile this course at x and x+1, the way two piles side by side render it: the
+                # left one has a neighbour ahead, the right one has a neighbour behind.
                 spans = [
-                    (s["x"] + offset - half, s["x"] + offset + half)
+                    (posed(s, bond)["x"] + offset - half, posed(s, bond)["x"] + offset + half)
                     for s in course
-                    for offset in (0.0, 1.0)
+                    for offset, bond in ((0.0, BOND_AHEAD), (1.0, BOND_BEHIND))
                 ]
                 bridged.append(any(a < 1.0 < b for a, b in spans))
 
@@ -153,7 +204,11 @@ class TestCommittedConfig(unittest.TestCase):
     def test_a_course_has_no_hole_wide_enough_to_see_through(self):
         """Stones may not tile a block exactly, but the slivers left over have to stay slivers."""
         half = geo.STONE_LENGTH / 2
-        widest_allowed = 0.03  # under half a texture pixel at the game's 16px stone
+
+        # Three stones of 0.3125 cover 0.9375 of a block, so 0.0625 of gap has to go somewhere.
+        # Split evenly, that is 0.03125 a side — half a texture pixel at the game's 16px scale,
+        # and the best a symmetric three-stone course can do. Anything wider is a real hole.
+        widest_allowed = 1.0 / 32 + 1e-9
 
         for name in ("masonry", "wall"):
             by_layer = {}

@@ -239,21 +239,32 @@ public sealed class RockPileSlotTransform
     public float RollDeg { get; set; }
 
     /// <summary>
-    /// Set on a <em>bond stone</em>: one placed across the pile's own -X face so it ties into the
+    /// Set on a stone in a <em>bond course</em>: one that lays a stone across the joint with the
     /// pile next door, the way a through stone ties a wall together. Without them every block
     /// boundary shows an unbroken vertical joint on every course, because each pile is otherwise
     /// a self-contained brick.
     ///
-    /// The value is where the stone sits instead when there is nothing next door to tie into, so
-    /// a lone wall does not have stones hanging out of its end. Note this moves a stone rather
-    /// than adding one: bonding never changes how many stones a pile holds, so neighbours coming
-    /// and going cannot strand or demand any.
+    /// Four positions, indexed by what the course has to tie into — <c>[none, ahead, behind,
+    /// both]</c>. Both ends matter: reasoning about the pile behind alone left the far end of a
+    /// run notched open while the near end sat flush, so the same wall looked different from each
+    /// end and swapped over when you turned it round.
+    ///
+    /// Note this moves stones rather than adding them: bonding never changes how many stones a
+    /// pile holds, so neighbours coming and going cannot strand or demand any.
     /// </summary>
-    [JsonProperty("xUnbonded")]
-    public float? XUnbonded { get; set; }
+    [JsonProperty("xBond")]
+    public float[]? XBond { get; set; }
 
-    /// <summary>Where this stone sits, given whether the pile has something to tie into.</summary>
-    public float XFor(bool bonded) => bonded || XUnbonded is null ? X : XUnbonded.Value;
+    /// <summary>Where this stone sits, given what the pile has to tie into on each side.</summary>
+    public float XFor(bool behind, bool ahead)
+    {
+        if (XBond is not { Length: 4 })
+        {
+            return X;
+        }
+
+        return XBond[(behind ? 2 : 0) + (ahead ? 1 : 0)];
+    }
 }
 
 public sealed class RockPileLayoutConfig

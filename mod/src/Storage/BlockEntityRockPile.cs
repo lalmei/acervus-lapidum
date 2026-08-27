@@ -40,10 +40,14 @@ public class BlockEntityRockPile : BlockEntityDisplay
     private bool loadAbove;
 
     /// <summary>
-    /// Whether the pile behind this one, along its own -X face, is laid the same way — so bond
-    /// stones have something to tie into. See <see cref="RockPileSlotTransform.XUnbonded"/>.
+    /// Whether the piles either side of this one, along its own X axis, are laid the same way —
+    /// so its bond courses have something to tie into. Both ends are tracked: a course that only
+    /// knew about one of them left the other end of a run notched open. See
+    /// <see cref="RockPileSlotTransform.XBond"/>.
     /// </summary>
-    private bool bondedBack;
+    private bool bondedBehind;
+
+    private bool bondedAhead;
 
     public BlockEntityRockPile()
     {
@@ -280,16 +284,21 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
         var carrying = Pos.Y + 1 < Api.World.BlockAccessor.MapSizeY
                        && Api.World.BlockAccessor.GetBlockEntity(Pos.UpCopy()) is BlockEntityRockPile;
-        var tiedIn = HasMatchingPileBehind();
+        var behind = HasMatchingPile(-1);
+        var ahead = HasMatchingPile(1);
 
-        if (index == segmentIndex && carrying == loadAbove && tiedIn == bondedBack)
+        if (index == segmentIndex
+            && carrying == loadAbove
+            && behind == bondedBehind
+            && ahead == bondedAhead)
         {
             return;
         }
 
         segmentIndex = index;
         loadAbove = carrying;
-        bondedBack = tiedIn;
+        bondedBehind = behind;
+        bondedAhead = ahead;
 
         // The new profile may hold fewer stones than the old one did.
         ShedSurplus();
@@ -300,28 +309,29 @@ public class BlockEntityRockPile : BlockEntityDisplay
     }
 
     /// <summary>
-    /// Whether the block along this pile's own -X face holds a pile laid the same way.
+    /// Whether the block one step along this pile's own X axis holds a pile laid the same way.
+    /// Pass -1 for the pile behind it and 1 for the pile ahead.
     ///
     /// Only square orientations can bond. A pile turned to a diagonal has no neighbour squarely
-    /// behind it to tie into, so its bond stones stay tucked in rather than jutting into the
+    /// alongside it to tie into, so its bond courses stay tucked in rather than jutting into the
     /// corner of whatever is there.
     /// </summary>
-    private bool HasMatchingPileBehind()
+    private bool HasMatchingPile(int alongX)
     {
         if (Api is null || orientation % 2 != 0)
         {
             return false;
         }
 
-        // Local -X, turned by the pile's own yaw. The render chain maps a local offset (dx, dz)
-        // to (cos.dx + sin.dz, -sin.dx + cos.dz), so local -X lands on (-cos, sin).
+        // Local X, turned by the pile's own yaw. The render chain maps a local offset (dx, dz) to
+        // (cos.dx + sin.dz, -sin.dx + cos.dz), so local +X lands on (cos, -sin).
         var radians = YawDeg * GameMath.DEG2RAD;
-        var behind = Pos.AddCopy(
-            (int)Math.Round(-Math.Cos(radians)),
+        var neighbourPos = Pos.AddCopy(
+            (int)Math.Round(alongX * Math.Cos(radians)),
             0,
-            (int)Math.Round(Math.Sin(radians)));
+            (int)Math.Round(-alongX * Math.Sin(radians)));
 
-        return Api.World.BlockAccessor.GetBlockEntity(behind) is BlockEntityRockPile neighbour
+        return Api.World.BlockAccessor.GetBlockEntity(neighbourPos) is BlockEntityRockPile neighbour
                && neighbour.LayoutMode == layoutMode
                && neighbour.Orientation == orientation;
     }
@@ -596,7 +606,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
                 .Translate(0.5f, 0f, 0.5f)
                 .RotateYDeg(yaw)
                 .Translate(-0.5f, 0f, -0.5f)
-                .Translate(pose.XFor(bondedBack), pose.Y, pose.Z)
+                .Translate(pose.XFor(bondedBehind, bondedAhead), pose.Y, pose.Z)
                 .RotateYDeg(pose.YawDeg)
                 .RotateXDeg(pose.PitchDeg)
                 .RotateZDeg(pose.RollDeg)
