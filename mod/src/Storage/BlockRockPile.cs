@@ -160,15 +160,11 @@ public class BlockRockPile : Block
             new()
             {
                 // Our own hotkey, not "toolmodeselect": vanilla's picker only opens with a stone
-                // in hand, and this line is what you read while standing there empty-handed.
+                // in hand, and this line is what you read while standing there empty-handed. Both
+                // are F and both offer the same choices, layouts and the turn alike, so one line
+                // covers the pile whatever you happen to be holding.
                 ActionLangCode = "acervuslapidum:blockhelp-rockpile-layout",
                 HotKeyCode = RockPileLayoutHotkey.HotkeyCode,
-                MouseButton = EnumMouseButton.None
-            },
-            new()
-            {
-                ActionLangCode = "acervuslapidum:blockhelp-rockpile-rotate",
-                HotKeyCode = "toolmodeselect",
                 MouseButton = EnumMouseButton.None
             }
         }.Append(base.GetPlacedBlockInteractionHelp(world, selection, forPlayer));

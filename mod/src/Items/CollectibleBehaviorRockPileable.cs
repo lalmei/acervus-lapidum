@@ -28,106 +28,26 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
     {
     }
 
-    private const string LayoutModeCacheKey = "acervuslapidum-rockpile-layout-modes";
-
     public override void OnLoaded(ICoreAPI api)
     {
         base.OnLoaded(api);
 
-        if (api is not ICoreClientAPI capi)
+        if (api is ICoreClientAPI capi)
         {
-            return;
+            layoutModes = RockPileLayoutModes.GetOrCreate(capi);
         }
-
-        layoutModes = ObjectCacheUtil.GetOrCreate(capi, LayoutModeCacheKey, () =>
-        {
-            // Index must line up with RockPileLayoutMode, which the tool mode int maps straight onto.
-            return new SkillItem[]
-            {
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "heap"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-heap")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawHeap),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "neat"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-neat")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawNeat),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "cairn"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-cairn")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawCairn),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "wall"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-wall")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawWall),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "scattered"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-scattered")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawScattered),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "masonry"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-masonry")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawMasonry),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "ring"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-ring")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawRing),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "spiral"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-spiral")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawSpiral),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "steps"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-steps")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawSteps),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "balanced"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-balanced")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawBalanced),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "twincolumns"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-twincolumns")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawTwinColumns),
-
-                // Last entry, past every layout: picking it turns the pile 45 degrees instead of
-                // restyling it. RotateModeIndex is what tells the two apart in SetToolMode.
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "rotate"),
-                    Name = Lang.Get("acervuslapidum:rockpile-rotate")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawRotate)
-            };
-        });
     }
 
     public override void OnUnloaded(ICoreAPI api)
     {
         base.OnUnloaded(api);
 
-        if (api is not ICoreClientAPI capi || ObjectCacheUtil.TryGet<SkillItem[]>(capi, LayoutModeCacheKey) is null)
-        {
-            return;
-        }
-
         // Shared across every rock type, so tear the cached textures down exactly once.
-        foreach (var mode in layoutModes ?? [])
+        if (api is ICoreClientAPI capi)
         {
-            mode?.Dispose();
+            RockPileLayoutModes.Dispose(capi);
+            layoutModes = null;
         }
-
-        ObjectCacheUtil.Delete(capi, LayoutModeCacheKey);
-        layoutModes = null;
     }
 
     public override void OnHeldInteractStart(
@@ -303,14 +223,13 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
     }
 
     /// <summary>The picker index of the turn entry, which sits after every layout.</summary>
-    public static int RotateModeIndex => Enum.GetValues<RockPileLayoutMode>().Length;
+    public static int RotateModeIndex => RockPileLayoutModes.RotateIndex;
 
     public override void SetToolMode(ItemSlot slot, IPlayer byPlayer, BlockSelection blockSelection, int toolMode)
     {
         var world = byPlayer.Entity.World;
-        var rotating = toolMode == RotateModeIndex;
 
-        if (!rotating)
+        if (toolMode != RotateModeIndex)
         {
             // Remember the choice on the stone, so the next pile you start is laid the same way.
             // Rotation is deliberately not remembered: it belongs to a pile, not to a stone.
@@ -329,34 +248,20 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
             return;
         }
 
-        if (!world.Claims.TryAccess(byPlayer, pile.Pos, EnumBlockAccessFlags.BuildOrBreak))
+        // The picker calls this on both sides. The client drives the change and tells the server
+        // where the pile ends up — see RockPileLayoutModes.Apply for why a turn cannot be left to
+        // both sides to work out for themselves.
+        if (world.Api is ICoreClientAPI capi)
         {
+            RockPileLayoutModes.Apply(capi, pile, toolMode);
             return;
         }
 
-        if (rotating)
+        if (toolMode != RotateModeIndex
+            && world.Claims.TryAccess(byPlayer, pile.Pos, EnumBlockAccessFlags.BuildOrBreak))
         {
-            // Only the client decides which way is next. The picker calls SetToolMode on both
-            // sides, and a relative turn applied on both is a turn of 90 degrees, which is what
-            // put every second orientation out of reach.
-            if (world.Side != EnumAppSide.Client)
-            {
-                return;
-            }
-
-            var target = pile.Orientation + 1;
-            pile.TurnTo(target);
-
-            // Send where it should end up, not how far to go, so the server landing on it a
-            // second time changes nothing.
-            (world.Api as ICoreClientAPI)?.Network.SendBlockEntityPacket(
-                pile.Pos,
-                BlockEntityRockPile.PacketIdRotate,
-                BitConverter.GetBytes(target));
-            return;
+            pile.SetLayoutMode(RockPileUtil.ClampLayoutMode(toolMode));
         }
-
-        pile.SetLayoutMode(RockPileUtil.ClampLayoutMode(toolMode));
     }
 
     public static bool TryInteract(

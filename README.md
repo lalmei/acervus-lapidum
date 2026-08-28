@@ -41,7 +41,8 @@ Requires **Vintage Story 1.22.x**.
 feeding the pile a stone at a time. A hold stays in the column it started in, so drifting off a
 finished pile will not scatter stones onto the ground beside it; starting a pile somewhere new
 takes a fresh click. Plain **right-click** takes one back, **Ctrl + right-click**
-takes several. **F** with empty hands cycles the layout.
+takes several. **F** opens the layout picker — with a stone in hand or empty-handed, and the last
+entry in it turns the pile 45°.
 
 Ctrl is not there to be awkward. Sneak + right-click on its own is how you lay the first stone for
 **knapping**, and vanilla keeps its own stone piles out of the way by asking for Ctrl too
