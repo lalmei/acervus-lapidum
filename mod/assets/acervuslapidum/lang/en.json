@@ -13,6 +13,7 @@
   "rockpile-layout-balanced": "Balanced stack",
   "rockpile-layout-twincolumns": "Twin columns",
   "rockpile-layout-title": "Rock pile layout",
+  "rockpile-layout-capacity": "Holds {0} stones",
   "rockpile-rotate": "Turn 45°",
 
   "hotkey-rockpile-layout": "Choose rock pile layout",

@@ -167,6 +167,16 @@ class TestEmptyHandedPickerReplacesCycling(unittest.TestCase):
         self.assertIn("RockPileLayoutModes.GetOrCreate(capi)", self.behavior)
         self.assertNotIn("new SkillItem", self.behavior)
 
+    def test_the_picker_names_a_layout_and_its_capacity_on_hover(self):
+        """A count read off the pile, not a table: a cairn holds fewer the higher it goes."""
+        self.assertIn("SlotCountFor", self.dialog)
+        self.assertIn(
+            "public int SlotCountFor(RockPileLayoutMode mode)",
+            (MOD / "src/Storage/BlockEntityRockPile.cs").read_text(),
+        )
+        self.assertIn("rockpile-layout-capacity", self.dialog)
+        self.assertIn("rockpile-layout-capacity", json.loads(LANG.read_text()))
+
     def test_the_dialog_can_turn_the_pile_too(self):
         """The turn entry is the last slot in that same grid, so it needs no key of its own."""
         self.assertIn("RockPileLayoutModes.RotateIndex", self.dialog)
