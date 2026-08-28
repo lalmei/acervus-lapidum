@@ -147,6 +147,11 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         // secondsUsed restarts at zero for this hold, so a marker left by the last one would sit
         // in the future and stall the repeat forever.
         byEntity.Attributes.SetFloat(StepAttr, 0f);
+
+        // Remember which column this hold is building in, so the repeat below cannot wander.
+        byEntity.Attributes.SetInt(AnchorXAttr, blockSel.Position.X);
+        byEntity.Attributes.SetInt(AnchorZAttr, blockSel.Position.Z);
+
         handling = EnumHandling.PreventSubsequent;
     }
 
@@ -155,13 +160,23 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
 
     private const string StepAttr = "acervuslapidum:lastPileStep";
 
+    // The column the current hold is building in. A hold feeds one pile and then carries on up
+    // the same column; it must never wander off and start a new pile somewhere else.
+    private const string AnchorXAttr = "acervuslapidum:pileAnchorX";
+    private const string AnchorZAttr = "acervuslapidum:pileAnchorZ";
+
     /// <summary>
     /// Keeps feeding the pile while the button is held.
     ///
-    /// A course is 32 stones and Ctrl is spoken for by the add gesture itself, so there is no key
-    /// left to hang a bulk transfer on. Holding the button is the better answer anyway: the pile
-    /// grows a stone at a time under the cursor and you stop when it looks right, which is rather
-    /// the point of placing stones one by one.
+    /// A course can be ninety-six stones and Ctrl is spoken for by the add gesture itself, so
+    /// there is no key left to hang a bulk transfer on. Holding the button is the better answer
+    /// anyway: the pile grows a stone at a time under the cursor and you stop when it looks right,
+    /// which is rather the point of placing stones one by one.
+    ///
+    /// The repeat stays in the column the hold began in. It used to re-run the whole placement
+    /// path, so the instant a pile filled up and the cursor drifted onto the ground beside it —
+    /// easy to do while still holding the button — the next stone started a fresh pile on the
+    /// floor next door. Starting a pile somewhere new is a thing you do with a new click.
     /// </summary>
     public override bool OnHeldInteractStep(
         float secondsUsed,
@@ -177,6 +192,17 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
             || !RockPileUtil.IsPileableStone(slot.Itemstack))
         {
             return false;
+        }
+
+        // Same column the hold started in, or nothing. A cairn grows straight up, so matching X
+        // and Z still lets a hold carry on into the course above without letting it stray.
+        if (blockSel.Position.X != byEntity.Attributes.GetInt(AnchorXAttr, blockSel.Position.X)
+            || blockSel.Position.Z != byEntity.Attributes.GetInt(AnchorZAttr, blockSel.Position.Z))
+        {
+            // Keep the hold alive rather than ending it: the player is still holding the button,
+            // and swinging back over the pile should carry on where it left off.
+            handling = EnumHandling.PreventSubsequent;
+            return true;
         }
 
         handling = EnumHandling.PreventSubsequent;

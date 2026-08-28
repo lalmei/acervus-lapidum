@@ -162,6 +162,35 @@ class TestChangesStayOnOnePile(unittest.TestCase):
                 self.assertNotIn("segment.", body)
 
 
+class TestHoldToRepeatStaysPut(unittest.TestCase):
+    """Holding the place button feeds one column, and never starts a pile somewhere else.
+
+    The repeat used to re-run the whole placement path every tick, CreatePile included. So the
+    moment a pile filled up and the cursor drifted onto the ground beside it — easy to do while
+    still holding the button down — the next stone started a fresh pile on the floor next door.
+    Starting a pile in a new spot is something a new click does.
+    """
+
+    def setUp(self):
+        self.behavior = BEHAVIOR.read_text()
+
+    def test_the_hold_records_the_column_it_started_in(self):
+        start = self.behavior.index("public override void OnHeldInteractStart(")
+        end = self.behavior.index("private const float RepeatSeconds", start)
+        body = self.behavior[start:end]
+        self.assertIn("SetInt(AnchorXAttr, blockSel.Position.X)", body)
+        self.assertIn("SetInt(AnchorZAttr, blockSel.Position.Z)", body)
+
+    def test_the_repeat_refuses_to_leave_that_column(self):
+        start = self.behavior.index("public override bool OnHeldInteractStep(")
+        end = self.behavior.index("public override void OnHeldInteractStop(", start)
+        body = self.behavior[start:end]
+        self.assertIn("AnchorXAttr", body)
+        self.assertIn("AnchorZAttr", body)
+        # The guard has to come before anything is placed.
+        self.assertLess(body.index("AnchorXAttr"), body.index("TryInteract"))
+
+
 class TestMixedRockTypes(unittest.TestCase):
     """A pile takes whatever stone you hand it — granite into a basalt pile stays granite.
 

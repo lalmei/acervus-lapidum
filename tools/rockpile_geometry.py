@@ -490,9 +490,13 @@ def build_steps(rng):
 
 
 def build_balanced(rng):
-    """The trail-marker look: a few flat stones stacked centrally, each turned off the last."""
+    """The trail-marker look: a few flat stones stacked centrally, each turned off the last.
+
+    Eight of them, so the stack spends the block's full height like everything else rather than
+    stopping a course short.
+    """
     slots = []
-    for layer in range(7):
+    for layer in range(LAYERS):
         slots.append(
             slot(
                 0.5 + rng.uniform(-0.035, 0.035),

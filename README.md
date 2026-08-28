@@ -38,7 +38,9 @@ Requires **Vintage Story 1.22.x**.
 ## How a pile works
 
 **Sneak + Ctrl + right-click** with stones in hand to place or add — hold the button down to keep
-feeding the pile a stone at a time. Plain **right-click** takes one back, **Ctrl + right-click**
+feeding the pile a stone at a time. A hold stays in the column it started in, so drifting off a
+finished pile will not scatter stones onto the ground beside it; starting a pile somewhere new
+takes a fresh click. Plain **right-click** takes one back, **Ctrl + right-click**
 takes several. **F** with empty hands cycles the layout.
 
 Ctrl is not there to be awkward. Sneak + right-click on its own is how you lay the first stone for
@@ -61,7 +63,7 @@ decided:
 | Steps | 60 | a flight; fills solid to 96 once loaded |
 | Hearth ring | 18 | hollow middle |
 | Twin columns | 16 | |
-| Balanced stack | 7 | |
+| Balanced stack | 8 | one stone a course |
 | **Masonry** | **96** | a whole cube, twelve to a course |
 
 The cairn narrows as it climbs because a ring of `N` stones laid end to end has exactly one
@@ -72,7 +74,7 @@ it — which is also what lets **walls stack**. Put one wall pile on a full one 
 straight through the join, as high as you care to build.
 
 Restyling a pile into a layout that holds fewer stones simply **drops the extra ones at your feet**.
-A balanced stack holds seven and masonry holds ninety-six, so changing your mind about a full pile
+A balanced stack holds eight and masonry holds ninety-six, so changing your mind about a full pile
 routinely leaves stones over; they pop out as items rather than sitting in the pile unrendered,
 which would break the one thing this pile promises.
 

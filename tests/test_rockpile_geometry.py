@@ -383,6 +383,12 @@ class TestCommittedConfig(unittest.TestCase):
         self.assertGreater(span_x, 0.6)
         self.assertLess(span_z, 0.35)
 
+    def test_a_balanced_stack_is_eight_stones_tall(self):
+        """One stone a course, using the block's full height like every other layout."""
+        slots = self.layouts["balanced"]
+        self.assertEqual(len(slots), geo.LAYERS)
+        self.assertEqual(len({round(s["y"], 5) for s in slots}), geo.LAYERS)
+
     def test_scattered_is_flatter_and_wider_than_the_heap(self):
         scattered, heap = self.layouts["scattered"], self.layouts["heap"]
         self.assertLess(max(s["y"] for s in scattered), max(s["y"] for s in heap))
