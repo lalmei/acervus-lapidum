@@ -99,14 +99,6 @@ public static class RockPileUtil
         return new AssetLocation("game", $"sounds/block/loosestone{1 + world.Rand.Next(4)}");
     }
 
-    /// <summary>Wraps round the enum, for the empty-handed hotkey that cycles instead of picking.</summary>
-    public static RockPileLayoutMode NextLayoutMode(RockPileLayoutMode mode)
-    {
-        var modes = Enum.GetValues<RockPileLayoutMode>();
-        var index = Array.IndexOf(modes, mode);
-        return modes[(index + 1) % modes.Length];
-    }
-
     /// <summary>Keeps stored or networked values inside the enum as modes come and go.</summary>
     public static RockPileLayoutMode ClampLayoutMode(int mode)
     {

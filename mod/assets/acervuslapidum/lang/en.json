@@ -12,10 +12,10 @@
   "rockpile-layout-steps": "Steps",
   "rockpile-layout-balanced": "Balanced stack",
   "rockpile-layout-twincolumns": "Twin columns",
-  "rockpile-layout-changed": "Rock pile layout: {0}",
+  "rockpile-layout-title": "Rock pile layout",
   "rockpile-rotate": "Turn 45°",
 
-  "hotkey-rockpile-layout": "Change rock pile layout",
+  "hotkey-rockpile-layout": "Choose rock pile layout",
 
   "blockinfo-rockpile-count": "{0} of {1} stones",
   "blockinfo-rockpile-layout": "Laid as: {0}",
@@ -25,8 +25,7 @@
   "blockhelp-rockpile-add": "Add a stone (hold to keep adding)",
   "blockhelp-rockpile-take": "Take a stone",
   "blockhelp-rockpile-takebulk": "Take several",
-  "blockhelp-rockpile-layout": "Change the layout",
-  "blockhelp-rockpile-rotate": "Turn the pile 45°",
+  "blockhelp-rockpile-layout": "Choose the layout, or turn the pile",
 
   "heldhelp-rockpile-place": "Place a stone (hold to keep placing)",
   "heldhelp-rockpile-layout": "Choose the layout, or turn the pile"

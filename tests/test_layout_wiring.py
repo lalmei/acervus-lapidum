@@ -22,6 +22,8 @@ import rockpile_geometry as geo  # noqa: E402
 MOD = ROOT / "mod"
 UTIL = MOD / "src/Storage/RockPileUtil.cs"
 BEHAVIOR = MOD / "src/Items/CollectibleBehaviorRockPileable.cs"
+MODES = MOD / "src/Storage/RockPileLayoutModes.cs"
+HOTKEY = MOD / "src/Storage/RockPileLayoutHotkey.cs"
 LANG = MOD / "assets/acervuslapidum/lang/en.json"
 CONFIG = MOD / "assets/acervuslapidum/config/rockpile-layout.json"
 
@@ -38,9 +40,9 @@ def enum_members():
 
 
 def picker_codes():
-    """The AssetLocation codes the tool-mode picker builds, in order."""
+    """The AssetLocation codes both pickers build, in order."""
     block = re.search(
-        r"return new SkillItem\[\]\s*\{(.*?)\n            \};", BEHAVIOR.read_text(), re.S
+        r"return new SkillItem\[\]\s*\{(.*?)\n *\};", MODES.read_text(), re.S
     ).group(1)
     return re.findall(r'new AssetLocation\("acervuslapidum", "(\w+)"\)', block)
 
@@ -118,19 +120,57 @@ class TestRotationIsIdempotent(unittest.TestCase):
     def setUp(self):
         self.entity = (MOD / "src/Storage/BlockEntityRockPile.cs").read_text()
         self.behavior = BEHAVIOR.read_text()
+        self.modes = MODES.read_text()
 
     def test_the_pile_turns_to_an_orientation_rather_than_by_one(self):
         self.assertIn("public void TurnTo(int value", self.entity)
         self.assertNotIn("RotateBy", self.entity)
         self.assertNotIn("RotateBy", self.behavior)
+        self.assertNotIn("RotateBy", self.modes)
 
     def test_the_rotate_packet_carries_the_destination(self):
         """A payload meaning 'end up here' is safe to apply twice; 'go one further' is not."""
-        self.assertIn("var target = pile.Orientation + 1;", self.behavior)
-        self.assertIn("BitConverter.GetBytes(target)", self.behavior)
+        self.assertIn("var target = pile.Orientation + 1;", self.modes)
+        self.assertIn("BitConverter.GetBytes(target)", self.modes)
 
     def test_only_the_client_picks_the_next_orientation(self):
-        self.assertIn("if (world.Side != EnumAppSide.Client)", self.behavior)
+        """Apply takes a client API, so the server has no path to a turn of its own."""
+        self.assertIn(
+            "public static bool Apply(ICoreClientAPI capi, BlockEntityRockPile pile, int index)",
+            self.modes,
+        )
+        self.assertIn("if (world.Api is ICoreClientAPI capi)", self.behavior)
+        self.assertNotIn("pile.TurnTo", self.behavior)
+
+
+class TestEmptyHandedPickerReplacesCycling(unittest.TestCase):
+    """F on a pile opens a picker, and offers the same things the tool mode picker does.
+
+    It used to step to the next layout each press, so reaching the last of eleven meant ten
+    presses past the ones you did not want, and turning a pile was only possible with a stone in
+    hand. Both pickers now read the one list in RockPileLayoutModes, so a layout added there shows
+    up in both at the same index.
+    """
+
+    def setUp(self):
+        self.hotkey = HOTKEY.read_text()
+        self.dialog = (MOD / "src/Storage/GuiDialogRockPileLayout.cs").read_text()
+        self.behavior = BEHAVIOR.read_text()
+
+    def test_the_hotkey_opens_the_dialog_rather_than_stepping_a_layout(self):
+        self.assertIn("new GuiDialogRockPileLayout(capi, pile.Pos)", self.hotkey)
+        self.assertNotIn("NextLayoutMode", self.hotkey)
+        self.assertNotIn("NextLayoutMode", (MOD / "src/Storage/RockPileUtil.cs").read_text())
+
+    def test_both_pickers_read_the_same_entries(self):
+        self.assertIn("RockPileLayoutModes.GetOrCreate(capi)", self.dialog)
+        self.assertIn("RockPileLayoutModes.GetOrCreate(capi)", self.behavior)
+        self.assertNotIn("new SkillItem", self.behavior)
+
+    def test_the_dialog_can_turn_the_pile_too(self):
+        """The turn entry is the last slot in that same grid, so it needs no key of its own."""
+        self.assertIn("RockPileLayoutModes.RotateIndex", self.dialog)
+        self.assertIn("RockPileLayoutModes.Apply(capi, pile, index)", self.dialog)
 
 
 class TestChangesStayOnOnePile(unittest.TestCase):
