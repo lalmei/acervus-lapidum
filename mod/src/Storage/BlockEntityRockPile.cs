@@ -97,6 +97,15 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// </summary>
     public int SlotCount => Math.Min(CurrentLayout().Length, RockPileUtil.MaxSlots);
 
+    /// <summary>
+    /// What this pile would hold laid out another way, which is what the layout picker reads to
+    /// tell you before you commit to it. Answered for *this* pile rather than in the abstract:
+    /// the same cairn is 19 stones on the ground and fewer once it is the third course up, and
+    /// steps carrying a load are a solid block underneath instead of a stair.
+    /// </summary>
+    public int SlotCountFor(RockPileLayoutMode mode) =>
+        Math.Min(layoutConfig.ForMode(mode, segmentIndex, loadAbove).Length, RockPileUtil.MaxSlots);
+
     public bool IsFull => StoneCount >= SlotCount;
 
     public Cuboidf[] GetCollisionBoxes() => colBoxes;

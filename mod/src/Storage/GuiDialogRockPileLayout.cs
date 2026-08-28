@@ -20,6 +20,7 @@ public sealed class GuiDialogRockPileLayout : GuiDialog
 {
     private const string GridKey = "layouts";
     private const string NameKey = "layoutname";
+    private const string CountKey = "layoutcount";
     private const int Columns = 6;
 
     /// <summary>The pile this picker was opened on. It does not follow the cursor afterwards.</summary>
@@ -47,10 +48,11 @@ public sealed class GuiDialogRockPileLayout : GuiDialog
 
         var gridBounds = ElementStdBounds.SlotGrid(EnumDialogArea.None, 0, GuiStyle.TitleBarHeight, Columns, rows);
         var nameBounds = ElementBounds.Fixed(0, 0, gridBounds.fixedWidth, 25).FixedUnder(gridBounds, 6);
+        var countBounds = ElementBounds.Fixed(0, 0, gridBounds.fixedWidth, 22).FixedUnder(nameBounds, 2);
 
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
         bgBounds.BothSizing = ElementSizing.FitToChildren;
-        bgBounds.WithChildren(gridBounds, nameBounds);
+        bgBounds.WithChildren(gridBounds, nameBounds, countBounds);
 
         SingleComposer = capi.Gui
             .CreateCompo("acervuslapidumrockpilelayout", ElementStdBounds.AutosizedMainDialog)
@@ -63,6 +65,11 @@ public sealed class GuiDialogRockPileLayout : GuiDialog
                     CairoFont.WhiteSmallText().WithOrientation(EnumTextOrientation.Center),
                     nameBounds,
                     NameKey)
+                .AddDynamicText(
+                    "",
+                    CairoFont.WhiteDetailText().WithOrientation(EnumTextOrientation.Center),
+                    countBounds,
+                    CountKey)
             .EndChildElements()
             .Compose();
 
@@ -79,21 +86,43 @@ public sealed class GuiDialogRockPileLayout : GuiDialog
         ShowSelected();
     }
 
-    /// <summary>Marks the layout the pile is wearing, and names it while nothing is hovered.</summary>
+    /// <summary>Marks the layout the pile is wearing, and describes it while nothing is hovered.</summary>
     private void ShowSelected()
     {
         var selected = (int)(Pile?.LayoutMode ?? RockPileLayoutMode.Heap);
 
         SingleComposer.GetSkillItemGrid(GridKey).selectedIndex = selected;
-        SingleComposer.GetDynamicText(NameKey).SetNewText(modes[selected].Name);
+        Describe(selected);
     }
 
     private void OnSlotOver(int index)
     {
         if (index >= 0 && index < modes.Length)
         {
-            SingleComposer.GetDynamicText(NameKey).SetNewText(modes[index].Name);
+            Describe(index);
         }
+    }
+
+    /// <summary>
+    /// Names the entry under the cursor, and says how many stones it holds.
+    ///
+    /// The count is what this pile would hold laid that way, not a figure from a table: a cairn
+    /// narrows as it climbs, so the same choice is 19 stones on the ground and fewer three
+    /// courses up. Worth reading before you pick, because a layout that holds fewer stones than
+    /// the pile has hands the extra ones straight back to you.
+    /// </summary>
+    private void Describe(int index)
+    {
+        SingleComposer.GetDynamicText(NameKey).SetNewText(modes[index].Name);
+
+        // The turn is not a layout and holds nothing; it leaves the pile exactly as many stones
+        // as it had.
+        var capacity = index == RockPileLayoutModes.RotateIndex
+            ? null
+            : Pile?.SlotCountFor(RockPileUtil.ClampLayoutMode(index));
+
+        SingleComposer.GetDynamicText(CountKey).SetNewText(
+            capacity is { } stones ? Lang.Get("acervuslapidum:rockpile-layout-capacity", stones) : "");
     }
 
     private void OnSlotClick(int index)
