@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+
+env:
+  VINTAGE_STORY_VERSION: 1.22.2
+  VINTAGE_STORY_ARCHIVE_URL: https://cdn.vintagestory.at/gamefiles/stable/vs_client_linux-x64_1.22.2.tar.gz
+
+jobs:
+  build:
+    name: Test, Build, and Package
+    # Unlike astra_terra and liber_terra this runs on GitHub's hosted runners:
+    # no self-hosted runner is registered for this repository, and everything
+    # the build needs — the .NET SDK and the linux-x64 game archive the DLLs
+    # come out of — installs cleanly on ubuntu. No PR author gate is needed
+    # as a result.
+    runs-on: ubuntu-latest
+
+    # contents: write is for attaching the package to the release draft below.
+    # Naming any scope drops the rest to none, which the other steps are fine
+    # with — cache and upload-artifact authenticate off the runtime token.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      # The Makefile is written for zsh (the install target uses zsh-only
+      # globs), and the hosted image does not guarantee it.
+      - name: Ensure zsh
+        run: command -v zsh || { sudo apt-get update && sudo apt-get install -y zsh; }
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+
+      # Pure geometry — no network and no game install, so this fails fast
+      # before the Vintage Story SDK is restored or downloaded.
+      - name: Sync Python deps
+        run: uv sync --frozen
+
+      - name: Run tool tests
+        run: make test-tools
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Cache Vintage Story client
+        uses: actions/cache@v6
+        with:
+          path: .vintagestory
+          key: vintagestory-${{ runner.os }}-${{ env.VINTAGE_STORY_VERSION }}
+
+      - name: Install Vintage Story references
+        shell: bash
+        run: |
+          if [[ ! -d "$GITHUB_WORKSPACE/.vintagestory" ]] || ! find "$GITHUB_WORKSPACE/.vintagestory" -name VintagestoryAPI.dll -type f | grep -q .; then
+            mkdir -p "$GITHUB_WORKSPACE/.vintagestory" "$RUNNER_TEMP/vintagestory"
+            curl -fL "$VINTAGE_STORY_ARCHIVE_URL" -o "$RUNNER_TEMP/vintagestory/vintagestory.tar.gz"
+            tar -xzf "$RUNNER_TEMP/vintagestory/vintagestory.tar.gz" -C "$GITHUB_WORKSPACE/.vintagestory"
+          fi
+
+          vintagestory_api="$(find "$GITHUB_WORKSPACE/.vintagestory" -name VintagestoryAPI.dll -type f | head -n 1)"
+          if [[ -z "$vintagestory_api" ]]; then
+            echo "Could not find VintagestoryAPI.dll after extracting Vintage Story." >&2
+            exit 1
+          fi
+
+          echo "VINTAGE_STORY=$(dirname "$vintagestory_api")" >> "$GITHUB_ENV"
+
+      # Compiles the mod against the game DLLs, so it runs after the install
+      # step. Still no world and no asset regeneration.
+      - name: Run game tests
+        run: make test-game
+
+      # Packaging consumes the layout config committed to the repository;
+      # `make assets` needs a game install and stays a local, deliberate step.
+      - name: Package mod from committed assets
+        run: make package
+
+      - name: Upload mod package
+        uses: actions/upload-artifact@v7
+        with:
+          name: acervuslapidum-mod-package
+          path: dist/*.zip
+          if-no-files-found: error
+
+      # The draft's install steps point at AcervusLapidum-<version>.zip, so
+      # attach every main build and the download always matches what main
+      # builds. The artifact above does not cover this: it expires and needs
+      # a GitHub login.
+      - name: Attach package to the release draft
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(jq -er '.version | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' mod/modinfo.json)"
+          package="dist/AcervusLapidum-$version.zip"
+
+          if [[ ! -f "$package" ]]; then
+            echo "make package produced no $package to attach." >&2
+            exit 1
+          fi
+
+          # Release Drafter creates the draft this uploads to, and it starts
+          # from the same push we did — so on a version's first build it can
+          # still be drafting. Give it a few rounds before calling it missing.
+          for attempt in {1..6}; do
+            if gh release upload "v$version" "$package" --clobber; then
+              exit 0
+            fi
+            echo "No draft tagged v$version yet (attempt $attempt); waiting." >&2
+            sleep 10
+          done
+
+          echo "Gave up attaching $package: no release draft tagged v$version." >&2
+          exit 1
