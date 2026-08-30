@@ -204,7 +204,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
                 continue;
             }
 
-            var stone = inventory[i].TakeOut(1);
+            var stone = RockPileUtil.ClearHeldLayoutMode(inventory[i].TakeOut(1));
             inventory[i].MarkDirty();
             if (stone is not null)
             {
@@ -450,7 +450,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
                 break;
             }
 
-            empty.Itemstack = taken;
+            empty.Itemstack = RockPileUtil.ClearHeldLayoutMode(taken);
             empty.MarkDirty();
             placed++;
         }
@@ -493,7 +493,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
                 break;
             }
 
-            taken.Add(slot.TakeOut(1)!);
+            taken.Add(RockPileUtil.ClearHeldLayoutMode(slot.TakeOut(1))!);
             slot.MarkDirty();
         }
 
@@ -567,7 +567,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
         {
             if (!slot.Empty)
             {
-                stacks.Add(slot.Itemstack!.Clone());
+                stacks.Add(RockPileUtil.ClearHeldLayoutMode(slot.Itemstack!.Clone())!);
             }
         }
 
@@ -582,7 +582,8 @@ public class BlockEntityRockPile : BlockEntityDisplay
     {
         for (var i = 0; i < inventory.Count; i++)
         {
-            inventory[i].Itemstack = i < stones.Count ? stones[i].Clone() : null;
+            inventory[i].Itemstack =
+                i < stones.Count ? RockPileUtil.ClearHeldLayoutMode(stones[i].Clone()) : null;
             inventory[i].MarkDirty();
         }
 

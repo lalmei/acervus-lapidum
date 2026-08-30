@@ -274,14 +274,46 @@ class TestMixedRockTypes(unittest.TestCase):
 
     def test_a_slot_takes_the_held_stone_as_it_is(self):
         """The stone that leaves your hand is the object the slot stores, so its rock type, and
-        anything else on the stack, survives the trip."""
+        anything else on the stack, survives the trip — bar the tool-mode layout marker, which
+        means nothing once the pile owns its own layout."""
         body = self.method_body("TryPut")
         self.assertIn("var taken = hotbar.TakeOut(1);", body)
-        self.assertIn("empty.Itemstack = taken;", body)
+        self.assertIn("empty.Itemstack = RockPileUtil.ClearHeldLayoutMode(taken);", body)
 
     def test_drops_come_from_the_slots_rather_than_one_template(self):
         """Breaking a mixed pile has to give back each stone as what it was."""
-        self.assertIn("stacks.Add(slot.Itemstack!.Clone());", self.source)
+        self.assertIn(
+            "stacks.Add(RockPileUtil.ClearHeldLayoutMode(slot.Itemstack!.Clone())!);",
+            self.source,
+        )
+
+    def test_the_layout_choice_never_rides_on_a_stone(self):
+        """A loose rock is a loose rock. Writing the picked layout onto the stack made a held
+        stone unequal to a plain one, so it stopped merging in hotbars, on the ground and in
+        chests. The preference belongs to the player; only the scrub touches a stack."""
+        for name in ("src/Storage/RockPileUtil.cs", "src/Items/CollectibleBehaviorRockPileable.cs",
+                     "src/Storage/BlockRockPile.cs"):
+            source = (MOD / name).read_text()
+            for line in source.splitlines():
+                if "LayoutAttr" not in line or "RemoveAttribute" in line:
+                    continue
+                with self.subTest(file=name, line=line.strip()):
+                    self.assertNotIn("stack.Attributes", line)
+                    self.assertNotIn("Itemstack.Attributes", line)
+
+    def test_stones_leave_a_pile_without_the_layout_marker(self):
+        """A stone carrying rockPileLayout is not equal to a plain one, so it will not merge in a
+        hotbar slot or on the ground. Every route out of a pile has to hand back plain stone."""
+        declarations = {
+            "ShedSurplus": "private void ShedSurplus(",
+            "TryTake": "public bool TryTake(",
+            "GetContentStacks": "public ItemStack[] GetContentStacks(",
+        }
+        for route, declaration in declarations.items():
+            with self.subTest(route=route):
+                start = self.source.index(declaration)
+                end = self.source.index("\n    }", start)
+                self.assertIn("ClearHeldLayoutMode", self.source[start:end])
 
 
 if __name__ == "__main__":

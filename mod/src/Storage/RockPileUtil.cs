@@ -1,6 +1,7 @@
 using Newtonsoft.Json;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
+using Vintagestory.API.Common.Entities;
 using Vintagestory.API.MathTools;
 using Vintagestory.GameContent;
 
@@ -107,19 +108,40 @@ public static class RockPileUtil
             : RockPileLayoutMode.Heap;
     }
 
-    public static RockPileLayoutMode GetHeldLayoutMode(ItemStack? stack)
+    /// <summary>
+    /// The layout this player last picked, for the next pile they start.
+    ///
+    /// Kept on the player, not on the stone. A stone carrying the choice as a stack attribute is
+    /// no longer equal to a plain stone: it stops merging in a hotbar slot, on the ground and in
+    /// a chest, so picking a layout quietly split every rock you were holding away from every
+    /// other rock in the world. A loose rock is a loose rock — the preference is the player's.
+    /// </summary>
+    public static RockPileLayoutMode GetPreferredLayoutMode(Entity? entity)
     {
-        if (stack?.Attributes is null)
+        if (entity?.WatchedAttributes is null)
         {
             return RockPileLayoutMode.Heap;
         }
 
-        return ClampLayoutMode(stack.Attributes.GetInt(LayoutAttr, (int)RockPileLayoutMode.Heap));
+        return ClampLayoutMode(entity.WatchedAttributes.GetInt(LayoutAttr, (int)RockPileLayoutMode.Heap));
     }
 
-    public static void SetHeldLayoutMode(ItemStack? stack, RockPileLayoutMode mode)
+    public static void SetPreferredLayoutMode(Entity? entity, RockPileLayoutMode mode)
     {
-        stack?.Attributes?.SetInt(LayoutAttr, (int)mode);
+        entity?.WatchedAttributes?.SetInt(LayoutAttr, (int)mode);
+    }
+
+    /// <summary>
+    /// Takes the layout marker off a stone left over from when the choice rode on the stack.
+    ///
+    /// Nothing writes it any more, but stones in existing worlds still carry it, and while they
+    /// do they will not stack with plain ones. Every stone that passes through a pile or a hand
+    /// is scrubbed on the way, so old saves heal themselves as they are played.
+    /// </summary>
+    public static ItemStack? ClearHeldLayoutMode(ItemStack? stack)
+    {
+        stack?.Attributes?.RemoveAttribute(LayoutAttr);
+        return stack;
     }
 
     private static Matrixf SlotRotation(RockPileSlotTransform slot)
