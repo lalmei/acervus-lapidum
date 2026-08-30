@@ -2,7 +2,7 @@
   {
     "op": "add",
     "side": "Server",
-    "comment": "Vanilla stone piles migrate themselves into rock piles when their block entity loads. Ground storage holding anything else returns immediately and stays vanilla.",
+    "comment": "Lets a vanilla stone pile migrate itself into a rock pile as its chunk loads — but only when convertVanillaPilesOnLoad is set in ModConfig/acervuslapidum.json. It is off by default: vanilla piles work perfectly well beside ours, and rewriting a world on install is not this mod's to do. /rockpile convert and /rockpile revert are the deliberate way in and out.",
     "file": "game:blocktypes/groundstorage.json",
     "path": "/entityBehaviors/-",
     "value": { "name": "RockPileConverter" }

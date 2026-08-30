@@ -26,8 +26,9 @@ stone in the pile is one rock you can see.** Then it lets you do something with 
   with a stone in hand — which also turns the pile, 45° a click.
 - **Mix your rock however you like.** A granite dropped into a basalt pile stores as granite,
   renders as granite and comes back as granite. Nothing insists a pile be all one stone.
-- **Your old piles still work.** Existing vanilla stone piles convert themselves when their chunk
-  loads. A full 64-stone one becomes a two-segment cairn, because that is what it always was.
+- **Your old piles are left exactly as they are.** Vanilla stone piles keep rendering and keep
+  handing stones back with this mod installed — nothing is rewritten behind your back. Convert
+  them when *you* want to, with `/rockpile convert`, and turn them back with `/rockpile revert`.
 - **Other mods' rocks pile too.** Anything whose item code starts `stone-` is picked up, so the
   rock types from Geology Addons and friends work without a compatibility patch each.
 - **Knapping is untouched.** Piling uses Ctrl as well as sneak, so the sneak + right-click that
@@ -102,6 +103,37 @@ at the bottom of every block. Take the load off again and it goes back to being 
 
 Masonry is the odd one out: it does not turn. A coursed cube coaxed 45° would swing its corners a
 fifth of a block into its neighbour, which is not something a block claiming to be solid may do.
+
+## Your existing world, and getting back out
+
+Installing this mod changes nothing that is already on the ground. Vanilla stone piles go on
+rendering, go on giving stones back a click at a time, and go on being vanilla stone piles. Only
+the stones you place from now on build rock piles.
+
+That is deliberate, and it is about the exit. A rock pile is a block this mod owns: uninstall with
+rock piles in the world and the game can no longer resolve `acervuslapidum:rockpile`, so the blocks
+go — and the stones inside them go with them. Nothing that was already yours should be put at that
+risk by a mod you have only just installed.
+
+Two commands move piles between the two worlds. Both need the `controlserver` privilege, both take
+a radius in blocks (32 by default) or `all` for every chunk the server currently has loaded, and
+both work on loaded chunks only — chunks nobody is near are on disk and out of reach.
+
+```
+/rockpile convert 64
+/rockpile revert all
+```
+
+**Converting** turns nearby vanilla stone piles into rock piles. A full 64-stone one becomes a
+two-segment cairn, because that is what it always was: two courses' worth of stone drawn as one.
+If you would rather that happened by itself as chunks load, set `convertVanillaPilesOnLoad` to
+`true` in `ModConfig/acervuslapidum.json`.
+
+**Reverting** turns rock piles back into vanilla ones, and is the thing to run before you remove
+the mod. A vanilla pile is a single 64-stone stack where ours can be a 96-stone masonry course of
+mixed rock, so whatever will not fit is dropped at your feet rather than rounded away. Walk your
+builds with `/rockpile revert all`, pick up what falls, and the world is plain vanilla again with
+every stone still in it.
 
 ## Where the geometry comes from
 

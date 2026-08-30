@@ -1,6 +1,13 @@
 {
   "block-rockpile": "Rock pile",
 
+  "command-rockpile-desc": "Convert stone piles between vanilla and Acervus Lapidum",
+  "command-rockpile-convert-desc": "Turn nearby vanilla stone piles into rock piles. Pass a radius in blocks (default 32), or 'all' for every loaded chunk.",
+  "command-rockpile-revert-desc": "Turn nearby rock piles back into vanilla stone piles. Run this before removing the mod. Pass a radius in blocks (default 32), or 'all' for every loaded chunk.",
+  "command-rockpile-badradius": "Radius must be a number from 1 to {0}, or 'all'.",
+  "command-rockpile-converted": "Converted {0} stone pile(s) holding {1} stone(s), across {2} loaded chunk(s).",
+  "command-rockpile-reverted": "Reverted {0} rock pile(s) holding {1} stone(s), across {2} loaded chunk(s). Stones a vanilla pile could not hold were dropped on the ground.",
+
   "rockpile-layout-heap": "Heap",
   "rockpile-layout-neat": "Neat course",
   "rockpile-layout-cairn": "Cairn",
