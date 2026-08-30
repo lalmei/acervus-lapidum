@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/release-drafter/release-drafter/main/schema.json
+
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+change-title-escapes: '\<*_&'
+sort-by: merged_at
+sort-direction: ascending
+
+# Player-facing changes come first; tooling collapses out of the way.
+categories:
+  - title: '✨ Features'
+    labels: ['feature', 'enhancement']
+  - title: '🪨 Piles & Layouts'
+    labels: ['layout']
+  - title: '🐛 Fixes'
+    labels: ['fix', 'bug']
+  - title: '🎨 Visuals & Polish'
+    labels: ['visual']
+  - title: '🤝 Mod Compatibility'
+    labels: ['compat']
+  - title: '📖 Documentation'
+    labels: ['docs', 'documentation']
+  - title: '🔧 Build, CI & Tooling'
+    labels: ['build', 'ci', 'chore']
+    collapse-after: 5
+
+exclude-labels:
+  - 'skip-changelog'
+
+no-changes-template: '- Housekeeping only — nothing player-facing this round.'
+
+# The workflow passes the version from mod/modinfo.json, so this only
+# matters for manually drafted releases.
+version-resolver:
+  major:
+    labels: ['major', 'breaking']
+  minor:
+    labels: ['minor', 'feature', 'layout']
+  patch:
+    labels: ['patch', 'fix', 'visual', 'docs', 'build', 'ci', 'chore']
+  default: patch
+
+# Labels must exist in the repo — autolabeler cannot create them.
+autolabeler:
+  - label: 'layout'
+    branch: ['/(layout|pile|cairn|wall)/i']
+    files: ['mod/assets/acervuslapidum/config/rockpile-layout.json', 'tools/rockpile_geometry.py']
+    title: ['/🪨/', '/\b(layout|cairn|drystone)\b/i']
+  - label: 'feature'
+    branch: ['/^feat\//i']
+    title: ['/✨/', '/🎲/', '/🌍/']
+  - label: 'fix'
+    branch: ['/^(fix|bug|hotfix)\//i']
+    title: ['/🐛/', '/🚑/']
+  - label: 'visual'
+    title: ['/🎨/', '/💄/']
+  - label: 'compat'
+    branch: ['/compat/i']
+    title: ['/🤝/', '/\bcompat(ibility)?\b/i']
+  - label: 'docs'
+    branch: ['/^docs\//i']
+    files: ['README.md', 'docs/**']
+    title: ['/📖/', '/📝/']
+  - label: 'build'
+    branch: ['/^(build|chore)\//i']
+    files: ['Makefile', 'tools/**', '**/*.csproj']
+    title: ['/🔧/', '/📦/', '/🧹/', '/♻️/']
+  - label: 'ci'
+    branch: ['/^ci\//i']
+    files: ['.github/**']
+    title: ['/👷/', '/💚/']
+
+template: |
+  ## What's Changed in v$RESOLVED_VERSION
+
+  $CHANGES
+
+  ## Install
+
+  1. Download `AcervusLapidum-$RESOLVED_VERSION.zip` below.
+  2. Drop it in your Vintage Story `Mods` folder, or extract it to `Mods/AcervusLapidum`.
+  3. Enable **Acervus Lapidum** in the mod manager.
+
+  Requires Vintage Story **1.22.x**.

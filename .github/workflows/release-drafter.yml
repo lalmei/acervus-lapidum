@@ -1,0 +1,40 @@
+name: Release Drafter
+
+on:
+  push:
+    branches:
+      - main
+  # Needed for the autolabeler: categories in the draft are label-driven,
+  # so PRs have to be labelled before they are merged.
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update_release_draft:
+    name: Update release draft
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checks out the base ref, never the PR head — nothing here runs
+      # untrusted code, it only reads the version out of modinfo.json.
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Read mod version
+        id: mod_version
+        shell: bash
+        run: |
+          version="$(jq -er '.version | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' mod/modinfo.json)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Update release draft
+        uses: release-drafter/release-drafter@v7
+        with:
+          version: ${{ steps.mod_version.outputs.version }}
+          # On PRs, only apply labels; redrafting happens on push to main.
+          disable-releaser: ${{ github.event_name == 'pull_request_target' }}
