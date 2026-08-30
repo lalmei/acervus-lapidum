@@ -219,7 +219,7 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
             }
         }
 
-        return (int)RockPileUtil.GetHeldLayoutMode(slot.Itemstack);
+        return (int)RockPileUtil.GetPreferredLayoutMode(byPlayer.Entity);
     }
 
     /// <summary>The picker index of the turn entry, which sits after every layout.</summary>
@@ -231,9 +231,13 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
 
         if (toolMode != RotateModeIndex)
         {
-            // Remember the choice on the stone, so the next pile you start is laid the same way.
-            // Rotation is deliberately not remembered: it belongs to a pile, not to a stone.
-            RockPileUtil.SetHeldLayoutMode(slot.Itemstack, RockPileUtil.ClampLayoutMode(toolMode));
+            // Remember the choice on the player, so the next pile they start is laid the same
+            // way. Rotation is deliberately not remembered: it belongs to a pile, not to a player.
+            RockPileUtil.SetPreferredLayoutMode(byPlayer.Entity, RockPileUtil.ClampLayoutMode(toolMode));
+
+            // Scrub the old on-stack marker if this stone still carries one, so it goes back to
+            // stacking with every other loose rock.
+            RockPileUtil.ClearHeldLayoutMode(slot.Itemstack);
             slot.MarkDirty();
         }
 
