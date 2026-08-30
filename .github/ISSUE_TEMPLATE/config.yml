@@ -1,0 +1,9 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: 📦 Downloads and release notes
+    url: https://github.com/lalmei/acervus-lapidum/releases
+    about: Grab the latest build and see what changed in it.
+  - name: 📖 How piles, cairns, and walls work
+    url: https://github.com/lalmei/acervus-lapidum#how-a-pile-works
+    about: Controls, layout capacities, and the rules behind stacking — read before reporting a surprise.
