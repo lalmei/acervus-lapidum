@@ -84,6 +84,11 @@ public static class RockPileLayoutModes
                     Code = new AssetLocation("acervuslapidum", "twincolumns"),
                     Name = Lang.Get("acervuslapidum:rockpile-layout-twincolumns")
                 }.WithIcon(capi, RockPileLayoutIcons.DrawTwinColumns),
+                new SkillItem
+                {
+                    Code = new AssetLocation("acervuslapidum", "arrow"),
+                    Name = Lang.Get("acervuslapidum:rockpile-layout-arrow")
+                }.WithIcon(capi, RockPileLayoutIcons.DrawArrow),
 
                 // Last entry, past every layout: picking it turns the pile 45 degrees instead of
                 // restyling it. RotateIndex is what tells the two apart in Apply.

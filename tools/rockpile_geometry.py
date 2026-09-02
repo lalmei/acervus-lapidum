@@ -532,6 +532,72 @@ def build_twin_columns(rng):
     return slots
 
 
+# The arrow, in block units: where its point sits, how far back the barbs sweep and how wide they
+# open, then the centres of the shaft stones running back from the point.
+ARROW_TIP_Z = 0.90
+ARROW_BARB_Z = 0.30
+ARROW_BARB_X = 0.34
+ARROW_SHAFT_Z = (0.13, 0.36, 0.59)
+# How far down each barb its two stones sit, as a fraction of the barb's length. The near pair is
+# well forward of the quarter point so the two barbs overlap across the centre line: a stone is
+# almost square, so barbs that merely meet leave a notch where the point should be.
+ARROW_BARB_T = (0.15, 0.60)
+ARROW_LAYERS = 4
+
+
+def build_arrow(rng):
+    """A waypoint arrow: two barbs meeting at a point, with a shaft running back from it.
+
+    Pointing is the whole job, and the pile already knows how to point — the turn entry swings it
+    45 degrees a click, so all eight headings are reachable and the layout itself only has to
+    agree on one: the arrow is built facing +Z and turned from there.
+
+    Four courses rather than the usual eight. An arrow is read from above, and a full-height one
+    is a wedge of stone you mostly see edge-on. Half a block also keeps it below eye level, which
+    is where a marker beside a path belongs.
+
+    Nothing here leaves the block: the barb tails stop short of the side walls and the point stops
+    short of the front one, so a row of arrows down a trail keeps its spacing.
+    """
+    slots = []
+    for layer in range(ARROW_LAYERS):
+        y = layer * STONE_HEIGHT
+
+        for side in (-1, 1):
+            dx = side * ARROW_BARB_X
+            dz = ARROW_BARB_Z - ARROW_TIP_Z
+            # A stone's long axis is X, and our Ry sends it to planar angle -yaw, so a barb's
+            # stones line up with it by taking the negative of the barb's own bearing.
+            yaw = -math.degrees(math.atan2(dz, dx))
+            for t in ARROW_BARB_T:
+                slots.append(
+                    slot(
+                        0.5 + dx * t,
+                        y,
+                        ARROW_TIP_Z + dz * t,
+                        yaw + rng.uniform(-3.0, 3.0),
+                        rng.uniform(-2.0, 2.0),
+                        rng.uniform(-2.0, 2.0),
+                    )
+                )
+
+        # The shaft, laid nose to tail down the centre line and overlapping the barb crossing, so
+        # there is no daylight between the point and the tail.
+        for z in ARROW_SHAFT_Z:
+            slots.append(
+                slot(
+                    0.5,
+                    y,
+                    z,
+                    -90.0 + rng.uniform(-3.0, 3.0),
+                    rng.uniform(-2.0, 2.0),
+                    rng.uniform(-2.0, 2.0),
+                )
+            )
+
+    return slots
+
+
 def build_layouts(game_path: Path):
     rng = random.Random(SEED)
     layouts = {
@@ -550,6 +616,12 @@ def build_layouts(game_path: Path):
     # C# config stays one dictionary of named slot arrays.
     for segment in range(CAIRN_SEGMENTS):
         layouts[f"cairn{segment}"] = build_cairn(rng, segment)
+
+    # New layouts draw from the shared rng last, after everything that was here before them.
+    # One rng and one seed is what makes the config reproducible, but it also means an insertion
+    # anywhere in the middle re-rolls the jitter of every layout built after it — a thousand-line
+    # diff for a change that added one arrow. Appending keeps the diff to the layout you added.
+    layouts["arrow"] = build_arrow(rng)
 
     # Piles fill in slot order, so every layout has to be laid out bottom-up or a stone would
     # appear above a gap. Sorting is stable, which keeps each course in the order its builder

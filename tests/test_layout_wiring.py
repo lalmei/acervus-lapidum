@@ -146,8 +146,8 @@ class TestRotationIsIdempotent(unittest.TestCase):
 class TestEmptyHandedPickerReplacesCycling(unittest.TestCase):
     """F on a pile opens a picker, and offers the same things the tool mode picker does.
 
-    It used to step to the next layout each press, so reaching the last of eleven meant ten
-    presses past the ones you did not want, and turning a pile was only possible with a stone in
+    It used to step to the next layout each press, so reaching the last one meant pressing past
+    every layout you did not want, and turning a pile was only possible with a stone in
     hand. Both pickers now read the one list in RockPileLayoutModes, so a layout added there shows
     up in both at the same index.
     """

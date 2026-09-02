@@ -231,7 +231,7 @@ class TestCommittedConfig(unittest.TestCase):
     def test_expected_layouts_are_present(self):
         expected = {
             "heap", "neat", "wall", "scattered",
-            "masonry", "ring", "spiral", "steps", "balanced", "twincolumns",
+            "masonry", "ring", "spiral", "steps", "balanced", "twincolumns", "arrow",
         }
         expected |= {f"cairn{i}" for i in range(geo.CAIRN_SEGMENTS)}
         self.assertEqual(set(self.layouts), expected)
@@ -248,6 +248,36 @@ class TestCommittedConfig(unittest.TestCase):
         self.assertEqual(len(xs), 2)
         # Clear of each other once the stones' own half-length is taken off the gap.
         self.assertGreater(xs[1] - xs[0], geo.STONE_LENGTH)
+
+    def test_the_arrow_points(self):
+        """The one layout whose whole job is a direction. It must narrow towards +Z, which is the
+        heading a pile is built at before it is turned, or turning it points nothing anywhere."""
+        arrow = self.layouts["arrow"]
+
+        def half_width(z):
+            return max(abs(s["x"] - 0.5) for s in arrow if abs(s["z"] - z) < 1e-6)
+
+        point = half_width(max(s["z"] for s in arrow))
+        tail = max(half_width(s["z"]) for s in arrow)
+
+        # The front stones are the two barbs on their way to where they cross, so the point is a
+        # pair straddling the centre line rather than a stone sitting on it. What has to hold is
+        # that the barbs open out well behind it.
+        self.assertGreater(tail, 0.15)
+        self.assertGreater(tail, 3 * point)
+
+        # And a shaft behind the point, so it reads as an arrow rather than an open V.
+        self.assertLess(min(s["z"] for s in arrow), 0.2)
+        self.assertTrue(any(abs(s["x"] - 0.5) < 1e-6 for s in arrow if s["z"] < 0.3))
+
+    def test_the_arrow_is_symmetric_about_its_own_line(self):
+        """A crooked arrow points somewhere between two headings, which is no heading at all."""
+        for layer in {round(s["y"], 5) for s in self.layouts["arrow"]}:
+            xs = sorted(
+                round(s["x"], 5) for s in self.layouts["arrow"] if abs(s["y"] - layer) < 1e-6
+            )
+            with self.subTest(layer=layer):
+                self.assertEqual(xs, sorted(round(1.0 - x, 5) for x in xs))
 
     def test_steps_climb(self):
         """Each step must be strictly higher than the one in front of it, and rest on stone all

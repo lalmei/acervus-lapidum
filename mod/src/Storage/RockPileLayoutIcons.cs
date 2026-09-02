@@ -6,7 +6,8 @@ namespace AcervusLapidum.Storage;
 /// <summary>
 /// Tool-mode icons for the layout picker, each a side-on sketch of the pile it builds: a rough
 /// mound for Heap, squared courses for Neat, a narrowing tower for Cairn, a long low run for
-/// Wall, and a thin spread for Scattered. Stones carry their own width so a wide flat spread
+/// Wall, a thin spread for Scattered, and — for Arrow, the one layout read from above rather
+/// than from the side — a chevron and shaft. Stones carry their own width so a wide flat spread
 /// reads differently from a tall narrow stack at icon size.
 /// </summary>
 public static class RockPileLayoutIcons
@@ -144,8 +145,22 @@ public static class RockPileLayoutIcons
     ];
 
     /// <summary>
-    /// The turn entry. Drawn as one stone stepped round through part of a circle rather than as an
-    /// arrow, so it sits in the same visual language as the layouts beside it in the picker.
+    /// A waypoint arrow seen from above: two barbs meeting at a point, and a shaft behind it.
+    /// Drawn pointing up the icon, which is the heading an unturned pile is built with.
+    /// </summary>
+    private static readonly (double dx, double y, double angle, double width)[] ArrowStones =
+    [
+        (-0.101, 0.361, -45, Wide), (0.101, 0.361, 45, Wide),
+        (-0.259, 0.519, -45, Wide), (0.259, 0.519, 45, Wide),
+        (0.000, 0.470, 90, 0.24),
+        (0.000, 0.650, 90, 0.24),
+        (0.000, 0.830, 90, 0.24)
+    ];
+
+    /// <summary>
+    /// The turn entry. Drawn as one stone stepped round through part of a circle rather than as a
+    /// drawn arrow, so it sits in the same visual language as the layouts beside it in the picker
+    /// — and so it is not mistaken for the Arrow layout two slots along.
     /// </summary>
     private static readonly (double dx, double y, double angle, double width)[] RotateStones =
     [
@@ -174,6 +189,9 @@ public static class RockPileLayoutIcons
 
     public static void DrawTwinColumns(Context cr, int x, int y, float w, float h, double[] rgba) =>
         Draw(cr, x, y, w, h, rgba, TwinColumnStones);
+
+    public static void DrawArrow(Context cr, int x, int y, float w, float h, double[] rgba) =>
+        Draw(cr, x, y, w, h, rgba, ArrowStones);
 
     public static void DrawRotate(Context cr, int x, int y, float w, float h, double[] rgba) =>
         Draw(cr, x, y, w, h, rgba, RotateStones);

@@ -22,7 +22,7 @@ stone in the pile is one rock you can see.** Then it lets you do something with 
   and they line up into continuous drystone rather than a row of separate heaps.
 - **A solid block, if you want one.** Fill a pile in the masonry layout and you get real coursed
   stone: walkable, buildable, fences and torches take hold. It costs what it looks like it costs.
-- **Eleven layouts**, switched with **F** while looking at a pile, or from the tool-mode picker
+- **Twelve layouts**, switched with **F** while looking at a pile, or from the tool-mode picker
   with a stone in hand — which also turns the pile, 45° a click.
 - **Mix your rock however you like.** A granite dropped into a basalt pile stores as granite,
   renders as granite and comes back as granite. Nothing insists a pile be all one stone.
@@ -65,6 +65,7 @@ decided:
 | Steps | 60 | a flight; fills solid to 96 once loaded |
 | Hearth ring | 18 | hollow middle |
 | Twin columns | 16 | |
+| Arrow | 28 | a waypoint marker; turn it to aim it |
 | Balanced stack | 8 | one stone a course |
 | **Masonry** | **96** | a whole cube, twelve to a course |
 
