@@ -22,7 +22,8 @@ public enum RockPileLayoutMode
     Spiral = 7,
     Steps = 8,
     Balanced = 9,
-    TwinColumns = 10
+    TwinColumns = 10,
+    Arrow = 11
 }
 
 public static class RockPileUtil
@@ -311,6 +312,10 @@ public sealed class RockPileLayoutConfig
     [JsonProperty("twincolumns")]
     public RockPileSlotTransform[] TwinColumns { get; set; } = [];
 
+    /// <summary>A waypoint marker, half a block tall, pointing whichever way the pile is turned.</summary>
+    [JsonProperty("arrow")]
+    public RockPileSlotTransform[] Arrow { get; set; } = [];
+
     [JsonProperty("scattered")]
     public RockPileSlotTransform[] Scattered { get; set; } = [];
 
@@ -351,6 +356,7 @@ public sealed class RockPileLayoutConfig
             RockPileLayoutMode.Steps => Steps,
             RockPileLayoutMode.Balanced => Balanced,
             RockPileLayoutMode.TwinColumns => TwinColumns,
+            RockPileLayoutMode.Arrow => Arrow,
             RockPileLayoutMode.Cairn => Math.Clamp(segment, 0, RockPileUtil.CairnSegmentProfiles - 1) switch
             {
                 0 => Cairn0,
