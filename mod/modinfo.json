@@ -4,7 +4,7 @@
   "name": "Acervus Lapidum",
   "authors": ["lalmei"],
   "description": "Pile stones the way you actually carry them. One stone in hand is one stone in the pile: heaps, tidy stacks, cairns you build course by course, and low drystone walls.",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "dependencies": {
     "game": "1.22.2"
   }
