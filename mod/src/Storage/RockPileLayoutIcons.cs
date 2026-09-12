@@ -107,13 +107,13 @@ public static class RockPileLayoutIcons
         (-0.080, 0.230, -10, Narrow)
     ];
 
-    /// <summary>A stair in profile, each tread one step higher than the last.</summary>
+    /// <summary>A stair in profile, each tread one step higher than the last, jointed like the
+    /// flight itself: three treads, because a fourth would have to touch the one beside it.</summary>
     private static readonly (double dx, double y, double angle, double width)[] StepsStones =
     [
-        (-0.345, 0.865, 0, Narrow), (-0.115, 0.865, 0, Narrow), (0.115, 0.865, 0, Narrow), (0.345, 0.865, 0, Narrow),
-        (-0.115, 0.745, 0, Narrow), (0.115, 0.745, 0, Narrow), (0.345, 0.745, 0, Narrow),
-        (0.115, 0.625, 0, Narrow), (0.345, 0.625, 0, Narrow),
-        (0.345, 0.505, 0, Narrow)
+        (-0.250, 0.865, 0, Narrow), (0.000, 0.865, 0, Narrow), (0.250, 0.865, 0, Narrow),
+        (0.000, 0.745, 0, Narrow), (0.250, 0.745, 0, Narrow),
+        (0.250, 0.625, 0, Narrow)
     ];
 
     /// <summary>A trail marker: a few stones stacked centrally, each turned off the last.</summary>

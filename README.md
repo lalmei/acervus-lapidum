@@ -62,12 +62,12 @@ decided:
 | Spiral | 32 | |
 | Wall | 64 | eight courses of eight — stacks, and bonds to its neighbours |
 | Cairn | 40 / 28 / 19 | footing, body, shoulder — see below |
-| Steps | 60 | a flight; fills solid to 96 once loaded |
+| Steps | 51 | a flight of three jointed treads; fills solid to 72 once loaded |
 | Hearth ring | 18 | hollow middle |
 | Twin columns | 16 | |
 | Arrow | 28 | a waypoint marker; turn it to aim it |
 | Balanced stack | 8 | one stone a course |
-| **Masonry** | **96** | a whole cube, twelve to a course, laid in a running bond |
+| **Masonry** | **72** | a whole cube, nine to a jointed course, laid in a running bond |
 
 The cairn narrows as it climbs because a ring of `N` stones laid end to end has exactly one
 radius, `N × 0.3125 / 2π`. Choosing the count chooses the width, every ring closes with no gap to
@@ -77,7 +77,7 @@ it — which is also what lets **walls stack**. Put one wall pile on a full one 
 straight through the join, as high as you care to build.
 
 Restyling a pile into a layout that holds fewer stones simply **drops the extra ones at your feet**.
-A balanced stack holds eight and masonry holds ninety-six, so changing your mind about a full pile
+A balanced stack holds eight and masonry holds seventy-two, so changing your mind about a full pile
 routinely leaves stones over; they pop out as items rather than sitting in the pile unrendered,
 which would break the one thing this pile promises.
 
@@ -87,11 +87,18 @@ separate blocks stood in a line. Each pile lays the stone crossing its own near 
 short at its far one, where the pile ahead reaches back over — so every joint gets exactly one
 bond stone rather than two fighting for the same space.
 
-Masonry courses also stagger **inside** a block: a course lies lengthways, the one above it a
-quarter turn round, so the joints of one never land on the joints of the next. Both fit twelve
-stones — the stone is 5 x 4 pixels on the floor, so three lengths by four depths and four depths by
-three lengths each tile a course — and alternating them is a running bond in both directions
-instead of twelve stone columns standing on each other.
+Masonry stones are **laid with a joint between them**, never face to face. Two stones that touch
+share a face exactly and a course of them reads as one milled slab with lines scored on it, so a
+course takes the most stones that still leave daylight: three across by three deep, nine in all,
+where tiling the cube exactly took twelve. Three stones a course is what the joint costs, and the
+joint is the same width everywhere — inside the course, at each face, and across the seam into the
+pile next door — so a run of masonry reads as one mortared wall.
+
+Courses also stagger **inside** a block, or the pile would read as columns. A course is two stones
+laid lengthways and one turned onto its 4-pixel side, and which end the turned stone sits at swaps
+every course, which puts the joints of one course a full pixel clear of the joints of the one
+below. The lengthways stone leading each bond course is also the one that carries across the seam,
+because a through stone crosses the joint on its long face.
 
 Both ends are considered, so a lone wall or a single masonry block is **symmetric**: flush at both
 ends, with nothing hanging out into thin air, and it looks the same whichever way you turn it.
@@ -137,7 +144,7 @@ If you would rather that happened by itself as chunks load, set `convertVanillaP
 `true` in `ModConfig/acervuslapidum.json`.
 
 **Reverting** turns rock piles back into vanilla ones, and is the thing to run before you remove
-the mod. A vanilla pile is a single 64-stone stack where ours can be a 96-stone masonry course of
+the mod. A vanilla pile is a single 64-stone stack where ours can be a 72-stone masonry course of
 mixed rock, so whatever will not fit is dropped at your feet rather than rounded away. Walk your
 builds with `/rockpile revert all`, pick up what falls, and the world is plain vanilla again with
 every stone still in it.
