@@ -52,10 +52,33 @@ class TestLayoutWiring(unittest.TestCase):
         self.members = enum_members()
         self.names = [name.lower() for name, _ in self.members]
 
-    def test_enum_values_are_dense_and_ordered(self):
-        """The tool mode index is cast straight to the enum, so the values must be 0..n-1 in
-        order. A gap would silently map a picker slot onto the wrong layout."""
-        self.assertEqual([value for _, value in self.members], list(range(len(self.members))))
+    def test_enum_values_only_ever_climb(self):
+        """Values are what saved piles hold, so they are never reused or reordered.
+
+        Gaps are allowed — a withdrawn layout leaves its number behind rather than sliding every
+        layout after it onto a number some existing world already wrote. What may not happen is a
+        value going backwards or repeating, which is how a saved pile ends up wearing a layout
+        nobody gave it.
+        """
+        values = [value for _, value in self.members]
+        self.assertEqual(values, sorted(set(values)))
+
+    def test_picker_slots_resolve_through_the_mode_list_not_a_cast(self):
+        """Because the enum may have gaps in it, a slot index is no longer an enum value.
+
+        Casting one to the other is the bug this guards: it only shows up on the layouts that sit
+        after the gap, as the wrong name, the wrong icon and the wrong stone count.
+        """
+        modes = MODES.read_text()
+        self.assertIn("public static RockPileLayoutMode ModeForIndex(int index)", modes)
+        self.assertIn("public static int IndexForMode(RockPileLayoutMode mode)", modes)
+
+        for source in (MODES, BEHAVIOR, MOD / "src/Storage/GuiDialogRockPileLayout.cs"):
+            with self.subTest(source=source.name):
+                text = source.read_text()
+                self.assertNotIn("(int)pile.LayoutMode", text)
+                self.assertNotIn("ClampLayoutMode(toolMode)", text)
+                self.assertNotIn("ClampLayoutMode(index)", text)
 
     def test_picker_lists_every_layout_in_enum_order_then_rotate(self):
         codes = picker_codes()
