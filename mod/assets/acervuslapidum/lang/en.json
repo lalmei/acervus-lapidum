@@ -20,6 +20,11 @@
   "rockpile-layout-twincolumns": "Twin columns",
   "rockpile-layout-arrow": "Arrow",
   "rockpile-layout-title": "Rock pile layout",
+  "rockpile-layout-group-loose": "Loose stone",
+  "rockpile-layout-group-waymark": "Waymarks",
+  "rockpile-layout-group-masonry": "Masonry",
+  "rockpile-layout-group-ornament": "Ornament",
+  "rockpile-layout-group-actions": "Turn",
   "rockpile-layout-capacity": "Holds {0} stones",
   "rockpile-rotate": "Turn 45°",
 

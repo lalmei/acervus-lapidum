@@ -5,14 +5,23 @@ using Vintagestory.API.Util;
 
 namespace AcervusLapidum.Storage;
 
+/// <summary>A labelled row of picker entries — the layouts that are the same kind of thing.</summary>
+/// <param name="Code">Lang suffix and grid key; see <c>rockpile-layout-group-*</c> in en.json.</param>
+/// <param name="PickerIndices">Slots in <see cref="RockPileLayoutModes.PickerModes"/> order.</param>
+public sealed record RockPileLayoutGroup(string Code, int[] PickerIndices)
+{
+    public string Title => Lang.Get($"acervuslapidum:rockpile-layout-group-{Code}");
+}
+
 /// <summary>
-/// The one list of things you can do to a pile from a picker: every layout, in enum order, then
-/// the turn entry.
+/// The one list of things you can do to a pile from the picker: every layout, in enum order, then
+/// the turn entry — plus the rows it is shown in.
 ///
-/// Two pickers show it. Holding a stone opens vanilla's tool mode dialog through
-/// <see cref="Items.CollectibleBehaviorRockPileable"/>; empty hands open
-/// <see cref="GuiDialogRockPileLayout"/> from the F hotkey. They share the list — and the
-/// textures behind it — so a layout added here appears in both, at the same index.
+/// There is one picker now, <see cref="GuiDialogRockPileLayout"/>, and F opens it whether or not
+/// you are holding a stone. Vanilla's tool mode dialog used to take the stone-in-hand case, but it
+/// can only draw one flat grid of every entry, and eleven layouts in a row read as a wall of grey
+/// icons. <see cref="LayoutGroups"/> is what a player is actually choosing between: how you want
+/// the stones to sit, not which of eleven pictures looks closest.
 /// </summary>
 public static class RockPileLayoutModes
 {
@@ -33,6 +42,44 @@ public static class RockPileLayoutModes
 
     /// <summary>The picker index of the turn entry, which sits after every layout.</summary>
     public static int RotateIndex => PickerModes.Length;
+
+    /// <summary>
+    /// Every layout, sorted into the rows the picker shows.
+    ///
+    /// A layout left out of this table is a layout nobody can pick — the picker walks these rows
+    /// rather than the flat list — so the wiring test counts the two against each other.
+    /// </summary>
+    private static readonly (string Code, RockPileLayoutMode[] Modes)[] GroupedModes =
+    [
+        // Stone tipped on the ground: no shape to it beyond staying out of the way.
+        ("loose", [RockPileLayoutMode.Heap, RockPileLayoutMode.Neat]),
+
+        // Piles you build to be read from a distance — which way to go, and that someone came by.
+        ("waymark", [RockPileLayoutMode.Cairn, RockPileLayoutMode.Arrow, RockPileLayoutMode.TwinColumns]),
+
+        // Stone laid as building: a course, a filled block, a flight to climb.
+        ("masonry", [RockPileLayoutMode.Wall, RockPileLayoutMode.Masonry, RockPileLayoutMode.Steps]),
+
+        // Piles whose point is the shape itself.
+        ("ornament", [RockPileLayoutMode.Ring, RockPileLayoutMode.Spiral, RockPileLayoutMode.Balanced])
+    ];
+
+    /// <summary>The layout rows, in the order the picker stacks them.</summary>
+    public static RockPileLayoutGroup[] LayoutGroups { get; } = GroupedModes
+        .Select(group => new RockPileLayoutGroup(group.Code, group.Modes.Select(IndexForMode).ToArray()))
+        .ToArray();
+
+    /// <summary>
+    /// The turn, on a row of its own. It is not a layout — it leaves the stones as they are and
+    /// swings the pile round — so it sits apart from the four that are.
+    /// </summary>
+    public static RockPileLayoutGroup ActionGroup { get; } = new("actions", [RotateIndex]);
+
+    /// <summary>Rows for a picker opened on a pile, or on bare ground where there is none to turn.</summary>
+    public static RockPileLayoutGroup[] GroupsFor(bool hasPile)
+    {
+        return hasPile ? [.. LayoutGroups, ActionGroup] : LayoutGroups;
+    }
 
     /// <summary>The layout a picker slot stands for. Out-of-range slots fall back to a heap.</summary>
     public static RockPileLayoutMode ModeForIndex(int index)
@@ -139,24 +186,34 @@ public static class RockPileLayoutModes
     }
 
     /// <summary>
-    /// Carries out a picker choice on a pile, client-side, and asks the server to agree.
+    /// Carries out a picker choice, client-side, and asks the server to agree.
     ///
     /// Client-only on purpose. The layout is an absolute value and lands the same however often
     /// it is applied, but a turn is relative: letting the server pick its own next orientation
     /// on top of the packet turned 45 degrees into 90 and put every second orientation out of
     /// reach. So the client decides where the pile ends up and sends that destination.
+    ///
+    /// <paramref name="pile"/> is null when the picker was opened over bare ground with a stone in
+    /// hand. There is nothing to restyle yet, so the choice is only remembered — and the next pile
+    /// that stone starts comes out laid that way.
     /// </summary>
-    public static bool Apply(ICoreClientAPI capi, BlockEntityRockPile pile, int index)
+    public static bool Apply(ICoreClientAPI capi, BlockEntityRockPile? pile, int index)
     {
         var player = capi.World?.Player;
-        if (player is null
-            || !capi.World!.Claims.TryAccess(player, pile.Pos, EnumBlockAccessFlags.BuildOrBreak))
+        if (player is null)
         {
             return false;
         }
 
         if (index == RotateIndex)
         {
+            // A turn belongs to a pile, not to a player: there is nothing to remember and nothing
+            // to turn when the picker is standing over bare ground.
+            if (pile is null || !CanBuildAt(capi, player, pile))
+            {
+                return false;
+            }
+
             var target = pile.Orientation + 1;
             pile.TurnTo(target);
 
@@ -169,6 +226,17 @@ public static class RockPileLayoutModes
         }
 
         var mode = ModeForIndex(index);
+        Remember(capi, player, mode);
+
+        if (pile is null)
+        {
+            return true;
+        }
+
+        if (!CanBuildAt(capi, player, pile))
+        {
+            return false;
+        }
 
         // Apply locally so the pile redraws on the same frame; the server confirms or bounces it.
         pile.SetLayoutMode(mode);
@@ -178,5 +246,31 @@ public static class RockPileLayoutModes
             BitConverter.GetBytes((int)mode));
 
         return true;
+    }
+
+    /// <summary>
+    /// Keeps the choice for the next pile this player starts, on both sides.
+    ///
+    /// Vanilla's tool mode dialog used to do this for us by running SetToolMode on the server too;
+    /// with our own picker the preference has to be sent — see <see cref="RockPileLayoutSync"/>.
+    /// </summary>
+    private static void Remember(ICoreClientAPI capi, IPlayer player, RockPileLayoutMode mode)
+    {
+        RockPileUtil.SetPreferredLayoutMode(player.Entity, mode);
+        RockPileLayoutSync.SendPreference(capi, mode);
+
+        // Scrub the old on-stack marker if the held stone still carries one, so it goes back to
+        // stacking with every other loose rock.
+        if (player.InventoryManager?.ActiveHotbarSlot is { Itemstack: not null } held
+            && RockPileUtil.IsPileableStone(held.Itemstack))
+        {
+            RockPileUtil.ClearHeldLayoutMode(held.Itemstack);
+            held.MarkDirty();
+        }
+    }
+
+    private static bool CanBuildAt(ICoreClientAPI capi, IPlayer player, BlockEntityRockPile pile)
+    {
+        return capi.World!.Claims.TryAccess(player, pile.Pos, EnumBlockAccessFlags.BuildOrBreak);
     }
 }

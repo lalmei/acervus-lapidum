@@ -13,7 +13,13 @@ namespace AcervusLapidum.Items;
 /// Stacking ground storage for new placements. Hold the button to keep feeding the pile.
 /// Pre-existing vanilla stone piles are converted on load by
 /// <see cref="BlockEntityBehaviorRockPileConverter"/> rather than being interacted with here.
-/// F while looking at a pile (or at placeable ground) picks the layout.
+///
+/// F while looking at a pile (or at placeable ground) picks the layout, through
+/// <see cref="RockPileLayoutHotkey"/> and <see cref="GuiDialogRockPileLayout"/>. Deliberately not
+/// through vanilla's tool modes: GuiDialogToolMode draws one flat grid of every entry and only
+/// opens with something in hand, so the same choice looked different — and, empty-handed, did not
+/// exist — depending on the player's hands. Reporting no tool modes here is what hands F to our
+/// own picker for stones while leaving every other tool's picker alone.
 ///
 /// Ctrl is not decoration. Sneak + RMB alone is how you start knapping a hard stone, and vanilla
 /// keeps its own stone ground storage out of the way by setting <c>ctrlKey: true</c> on the
@@ -22,8 +28,6 @@ namespace AcervusLapidum.Items;
 /// </summary>
 public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
 {
-    private SkillItem[]? layoutModes;
-
     public CollectibleBehaviorRockPileable(CollectibleObject collObj) : base(collObj)
     {
     }
@@ -32,9 +36,11 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
     {
         base.OnLoaded(api);
 
+        // Draw the picker icons now rather than on the first F press. They are shared by every
+        // rock type and by the picker itself, which is where they are read from.
         if (api is ICoreClientAPI capi)
         {
-            layoutModes = RockPileLayoutModes.GetOrCreate(capi);
+            RockPileLayoutModes.GetOrCreate(capi);
         }
     }
 
@@ -46,7 +52,6 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         if (api is ICoreClientAPI capi)
         {
             RockPileLayoutModes.Dispose(capi);
-            layoutModes = null;
         }
     }
 
@@ -209,92 +214,10 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
             new WorldInteraction
             {
                 ActionLangCode = "acervuslapidum:heldhelp-rockpile-layout",
-                HotKeyCode = "toolmodeselect",
+                HotKeyCode = RockPileLayoutHotkey.HotkeyCode,
                 MouseButton = EnumMouseButton.None
             }
         ];
-    }
-
-    public override SkillItem[]? GetToolModes(ItemSlot slot, IClientPlayer forPlayer, BlockSelection blockSel)
-    {
-        if (blockSel is null || !RockPileUtil.IsPileableStone(slot.Itemstack))
-        {
-            return null;
-        }
-
-        if (FindTargetPile(forPlayer.Entity.World, blockSel) is not null)
-        {
-            return layoutModes;
-        }
-
-        // Also allow choosing the layout before the first stone goes down.
-        if (blockSel.Face == BlockFacing.UP)
-        {
-            return layoutModes;
-        }
-
-        return null;
-    }
-
-    public override int GetToolMode(ItemSlot slot, IPlayer byPlayer, BlockSelection blockSelection)
-    {
-        if (blockSelection is not null)
-        {
-            var pile = FindTargetPile(byPlayer.Entity.World, blockSelection);
-            if (pile is not null)
-            {
-                return RockPileLayoutModes.IndexForMode(pile.LayoutMode);
-            }
-        }
-
-        // A picker slot, not an enum value: the two part company as soon as a layout is withdrawn.
-        return RockPileLayoutModes.IndexForMode(RockPileUtil.GetPreferredLayoutMode(byPlayer.Entity));
-    }
-
-    /// <summary>The picker index of the turn entry, which sits after every layout.</summary>
-    public static int RotateModeIndex => RockPileLayoutModes.RotateIndex;
-
-    public override void SetToolMode(ItemSlot slot, IPlayer byPlayer, BlockSelection blockSelection, int toolMode)
-    {
-        var world = byPlayer.Entity.World;
-
-        if (toolMode != RotateModeIndex)
-        {
-            // Remember the choice on the player, so the next pile they start is laid the same
-            // way. Rotation is deliberately not remembered: it belongs to a pile, not to a player.
-            RockPileUtil.SetPreferredLayoutMode(byPlayer.Entity, RockPileLayoutModes.ModeForIndex(toolMode));
-
-            // Scrub the old on-stack marker if this stone still carries one, so it goes back to
-            // stacking with every other loose rock.
-            RockPileUtil.ClearHeldLayoutMode(slot.Itemstack);
-            slot.MarkDirty();
-        }
-
-        if (blockSelection is null)
-        {
-            return;
-        }
-
-        var pile = FindTargetPile(world, blockSelection);
-        if (pile is null)
-        {
-            return;
-        }
-
-        // The picker calls this on both sides. The client drives the change and tells the server
-        // where the pile ends up — see RockPileLayoutModes.Apply for why a turn cannot be left to
-        // both sides to work out for themselves.
-        if (world.Api is ICoreClientAPI capi)
-        {
-            RockPileLayoutModes.Apply(capi, pile, toolMode);
-            return;
-        }
-
-        if (toolMode != RotateModeIndex
-            && world.Claims.TryAccess(byPlayer, pile.Pos, EnumBlockAccessFlags.BuildOrBreak))
-        {
-            pile.SetLayoutMode(RockPileLayoutModes.ModeForIndex(toolMode));
-        }
     }
 
     public static bool TryInteract(

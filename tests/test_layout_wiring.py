@@ -1,9 +1,10 @@
 """The layout list is written down in four places. They have to agree.
 
-A layout exists as a C# enum member, a key in the generated config, a Cairo icon and an entry in
-the tool-mode picker, plus a display name in the lang file. Adding one and forgetting another does
-not fail the build — it fails quietly in game, as an untranslated string or a pile that renders
-into a single spot because its config key never matched. So check the four against each other.
+A layout exists as a C# enum member, a key in the generated config, a Cairo icon, an entry in the
+picker and a row of the picker's grouping table, plus a display name in the lang file. Adding one
+and forgetting another does not fail the build — it fails quietly in game, as an untranslated
+string, a layout nobody can pick, or a pile that renders into a single spot because its config key
+never matched. So check them against each other.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ def enum_members():
 
 
 def picker_codes():
-    """The AssetLocation codes both pickers build, in order."""
+    """The AssetLocation codes the picker builds, in order."""
     block = re.search(
         r"return new SkillItem\[\]\s*\{(.*?)\n *\};", MODES.read_text(), re.S
     ).group(1)
@@ -134,10 +135,11 @@ class TestLayoutWiring(unittest.TestCase):
 class TestRotationIsIdempotent(unittest.TestCase):
     """Turning a pile must survive being applied twice.
 
-    The tool mode picker runs SetToolMode on the client and again on the server. That is harmless
-    for a layout change, because setting the same mode twice is that mode — but a relative "turn
-    one more step" applied on both sides turns 45 degrees into 90, which put half the orientations
-    out of reach. Source guards, since neither side can be constructed without a running world.
+    The tool mode picker used to run SetToolMode on the client and again on the server. That was
+    harmless for a layout change, because setting the same mode twice is that mode — but a relative
+    "turn one more step" applied on both sides turns 45 degrees into 90, which put half the
+    orientations out of reach. Source guards, since neither side can be constructed without a
+    running world.
     """
 
     def setUp(self):
@@ -159,33 +161,59 @@ class TestRotationIsIdempotent(unittest.TestCase):
     def test_only_the_client_picks_the_next_orientation(self):
         """Apply takes a client API, so the server has no path to a turn of its own."""
         self.assertIn(
-            "public static bool Apply(ICoreClientAPI capi, BlockEntityRockPile pile, int index)",
+            "public static bool Apply(ICoreClientAPI capi, BlockEntityRockPile? pile, int index)",
             self.modes,
         )
-        self.assertIn("if (world.Api is ICoreClientAPI capi)", self.behavior)
         self.assertNotIn("pile.TurnTo", self.behavior)
 
 
-class TestEmptyHandedPickerReplacesCycling(unittest.TestCase):
-    """F on a pile opens a picker, and offers the same things the tool mode picker does.
+class TestOnePickerForBothHands(unittest.TestCase):
+    """F opens the same picker with a stone in hand and without one.
 
-    It used to step to the next layout each press, so reaching the last one meant pressing past
-    every layout you did not want, and turning a pile was only possible with a stone in
-    hand. Both pickers now read the one list in RockPileLayoutModes, so a layout added there shows
-    up in both at the same index.
+    There used to be two. Holding a stone got vanilla's tool mode dialog — one flat grid of every
+    entry — and empty hands got ours, which was the only way to reach it at all since
+    GuiDialogToolMode bails when the held item reports no tool modes. Same choice, two looks. The
+    stone path now reports no tool modes on purpose, so vanilla declines the keypress and our
+    picker takes both cases.
     """
 
     def setUp(self):
         self.hotkey = HOTKEY.read_text()
         self.dialog = (MOD / "src/Storage/GuiDialogRockPileLayout.cs").read_text()
         self.behavior = BEHAVIOR.read_text()
+        self.modes = MODES.read_text()
 
     def test_the_hotkey_opens_the_dialog_rather_than_stepping_a_layout(self):
-        self.assertIn("new GuiDialogRockPileLayout(capi, pile.Pos)", self.hotkey)
+        self.assertIn("new GuiDialogRockPileLayout(capi, pile?.Pos)", self.hotkey)
         self.assertNotIn("NextLayoutMode", self.hotkey)
         self.assertNotIn("NextLayoutMode", (MOD / "src/Storage/RockPileUtil.cs").read_text())
 
-    def test_both_pickers_read_the_same_entries(self):
+    def test_a_stone_in_hand_offers_no_tool_modes_of_its_own(self):
+        """What hands the stone-in-hand case to our picker: vanilla has nothing to show."""
+        for override in ("GetToolModes(", "SetToolMode(", "GetToolMode("):
+            with self.subTest(override=override):
+                self.assertNotIn(f"public override SkillItem[]? {override}", self.behavior)
+                self.assertNotIn(f"public override void {override}", self.behavior)
+                self.assertNotIn(f"public override int {override}", self.behavior)
+
+        # ... and the held-item help points at our hotkey rather than vanilla's.
+        self.assertIn("HotKeyCode = RockPileLayoutHotkey.HotkeyCode", self.behavior)
+        self.assertNotIn('HotKeyCode = "toolmodeselect"', self.behavior)
+
+    def test_the_picker_opens_over_bare_ground_with_a_stone_in_hand(self):
+        """No pile yet: the choice is remembered, and the pile that stone starts wears it."""
+        self.assertIn("IsPileableStone(held?.Itemstack)", self.hotkey)
+        self.assertIn("BlockPos? pos", self.dialog)
+        self.assertIn("if (pile is null)", self.modes)
+
+    def test_the_choice_reaches_the_server_now_that_the_tool_mode_packet_does_not(self):
+        """CreatePile reads the preference server-side, so a client-only choice would be lost."""
+        sync = (MOD / "src/Storage/RockPileLayoutSync.cs").read_text()
+        self.assertIn("RockPileLayoutSync.SendPreference(capi, mode)", self.modes)
+        self.assertIn("SetMessageHandler<RockPileLayoutPreferencePacket>", sync)
+        self.assertIn("SetPreferredLayoutMode(\n            fromPlayer.Entity", sync)
+
+    def test_both_hands_read_the_same_entries(self):
         self.assertIn("RockPileLayoutModes.GetOrCreate(capi)", self.dialog)
         self.assertIn("RockPileLayoutModes.GetOrCreate(capi)", self.behavior)
         self.assertNotIn("new SkillItem", self.behavior)
@@ -201,9 +229,51 @@ class TestEmptyHandedPickerReplacesCycling(unittest.TestCase):
         self.assertIn("rockpile-layout-capacity", json.loads(LANG.read_text()))
 
     def test_the_dialog_can_turn_the_pile_too(self):
-        """The turn entry is the last slot in that same grid, so it needs no key of its own."""
+        """The turn is a row of its own, so it needs no key of its own."""
         self.assertIn("RockPileLayoutModes.RotateIndex", self.dialog)
         self.assertIn("RockPileLayoutModes.Apply(capi, pile, index)", self.dialog)
+        self.assertIn('ActionGroup { get; } = new("actions", [RotateIndex])', self.modes)
+
+
+class TestLayoutRows(unittest.TestCase):
+    """The picker shows layouts in labelled rows, and every layout is in exactly one.
+
+    The rows are what the picker walks — not the flat list — so a layout missing from the table is
+    a layout nobody can pick, and one listed twice appears twice. Neither fails the build.
+    """
+
+    def setUp(self):
+        self.modes = MODES.read_text()
+        self.dialog = (MOD / "src/Storage/GuiDialogRockPileLayout.cs").read_text()
+        self.groups = self.grouped_modes()
+
+    def grouped_modes(self):
+        """(code, [mode names]) for each row of the GroupedModes table."""
+        body = re.search(
+            r"GroupedModes =\s*\[(.*?)\n *\];", self.modes, re.S
+        ).group(1)
+        return [
+            (m.group(1), re.findall(r"RockPileLayoutMode\.(\w+)", m.group(2)))
+            for m in re.finditer(r'\("(\w+)",\s*\[([^\]]*)\]\)', body)
+        ]
+
+    def test_every_layout_sits_in_exactly_one_row(self):
+        grouped = [mode for _, modes in self.groups for mode in modes]
+        declared = [name for name, _ in enum_members()]
+        self.assertEqual(sorted(grouped), sorted(declared))
+        self.assertEqual(len(grouped), len(set(grouped)))
+
+    def test_every_row_has_a_heading(self):
+        lang = json.loads(LANG.read_text())
+        for code, _ in self.groups + [("actions", [])]:
+            with self.subTest(row=code):
+                self.assertIn(f"rockpile-layout-group-{code}", lang)
+
+    def test_the_dialog_draws_a_grid_per_row_rather_than_one_flat_grid(self):
+        self.assertIn("RockPileLayoutModes.GroupsFor(", self.dialog)
+        self.assertIn("group.PickerIndices[slot]", self.dialog)
+        # One selection mark, in whichever row owns the layout in force.
+        self.assertIn("Array.IndexOf(group.PickerIndices, selected)", self.dialog)
 
 
 class TestChangesStayOnOnePile(unittest.TestCase):
