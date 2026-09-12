@@ -6,9 +6,12 @@ namespace AcervusLapidum.Storage;
 /// <summary>
 /// Tool-mode icons for the layout picker, each a side-on sketch of the pile it builds: a rough
 /// mound for Heap, squared courses for Neat, a narrowing tower for Cairn, a long low run for
-/// Wall, a thin spread for Scattered, and — for Arrow, the one layout read from above rather
-/// than from the side — a chevron and shaft. Stones carry their own width so a wide flat spread
-/// reads differently from a tall narrow stack at icon size.
+/// Wall, and — for Arrow, the one layout read from above rather than from the side — a chevron
+/// and shaft. Stones carry their own width so a wide flat spread reads differently from a tall
+/// narrow stack at icon size.
+///
+/// The turn entry is the exception: it is the one thing in the picker that is not a pile, so it
+/// is drawn as a circular arrow rather than out of stones.
 /// </summary>
 public static class RockPileLayoutIcons
 {
@@ -134,32 +137,35 @@ public static class RockPileLayoutIcons
     ];
 
     /// <summary>
-    /// A waypoint arrow seen from above: two barbs meeting at a point, and a shaft behind it.
-    /// Drawn pointing up the icon, which is the heading an unturned pile is built with.
+    /// A waypoint arrow seen from above, laid out of stones the way the pile itself lays it: two
+    /// barbs meeting at a point, and a shaft of three behind it. Drawn pointing up the icon,
+    /// which is the heading an unturned pile is built with.
+    ///
+    /// It can spread out to the icon's full width now that the turn entry beside it is a drawn
+    /// arrow rather than a ring of stones, so there is nothing left for it to be confused with.
     /// </summary>
     private static readonly (double dx, double y, double angle, double width)[] ArrowStones =
     [
-        (-0.101, 0.361, -45, Wide), (0.101, 0.361, 45, Wide),
-        (-0.259, 0.519, -45, Wide), (0.259, 0.519, 45, Wide),
-        (0.000, 0.470, 90, 0.24),
-        (0.000, 0.650, 90, 0.24),
-        (0.000, 0.830, 90, 0.24)
+        (-0.110, 0.285, -45, Wide), (0.110, 0.285, 45, Wide),
+        (-0.322, 0.497, -45, Wide), (0.322, 0.497, 45, Wide),
+        (0.000, 0.410, 90, 0.26),
+        (0.000, 0.620, 90, 0.26),
+        (0.000, 0.830, 90, 0.26)
     ];
 
     /// <summary>
-    /// The turn entry. Drawn as one stone stepped round through part of a circle rather than as a
-    /// drawn arrow, so it sits in the same visual language as the layouts beside it in the picker
-    /// — and so it is not mistaken for the Arrow layout two slots along.
+    /// The turn entry: a circular arrow, the same sign the chisel uses for the same idea.
+    ///
+    /// It was a ring of stones, on the reasoning that the picker is otherwise all piles — but a
+    /// ring of stones is what the Ring layout is, and the one entry in the grid that does not
+    /// restyle the pile is exactly the one that should not look like a layout. Not a pile, so not
+    /// drawn out of stones.
     /// </summary>
-    private static readonly (double dx, double y, double angle, double width)[] RotateStones =
-    [
-        (0.000, 0.320, 0, Narrow),
-        (0.230, 0.400, 45, Narrow),
-        (0.320, 0.600, 90, Narrow),
-        (0.230, 0.800, 135, Narrow),
-        (0.000, 0.880, 180, Narrow),
-        (-0.230, 0.800, 225, Narrow)
-    ];
+    private const double RotateRadius = 0.30;
+
+    /// <summary>Where the arc starts and stops, measured clockwise from due north.</summary>
+    private const double RotateStartDeg = 25;
+    private const double RotateSweepDeg = 290;
 
     public static void DrawMasonry(Context cr, int x, int y, float w, float h, double[] rgba) =>
         Draw(cr, x, y, w, h, rgba, MasonryStones);
@@ -182,8 +188,52 @@ public static class RockPileLayoutIcons
     public static void DrawArrow(Context cr, int x, int y, float w, float h, double[] rgba) =>
         Draw(cr, x, y, w, h, rgba, ArrowStones);
 
-    public static void DrawRotate(Context cr, int x, int y, float w, float h, double[] rgba) =>
-        Draw(cr, x, y, w, h, rgba, RotateStones);
+    /// <summary>
+    /// An open circle with a head on one end, drawn rather than assembled.
+    ///
+    /// Stroked, unlike every other icon here, because a ring of even thickness is what reads as
+    /// "turn" — and the head is a filled triangle sitting on the tangent at the arc's end, so it
+    /// points the way the stroke was travelling however the arc is sized.
+    /// </summary>
+    public static void DrawRotate(Context cr, int x, int y, float width, float height, double[] rgba)
+    {
+        var size = Math.Min(width, height);
+        var radius = size * RotateRadius;
+        var cx = x + width / 2;
+        var cy = y + height / 2;
+
+        // Cairo measures from due east and turns clockwise on a y-down surface; the icon is
+        // easier to reason about from due north, so shift a quarter turn.
+        var start = (RotateStartDeg - 90) * GameMath.DEG2RAD;
+        var end = start + RotateSweepDeg * GameMath.DEG2RAD;
+
+        cr.Save();
+        cr.SetSourceRGBA(rgba[0], rgba[1], rgba[2], rgba[3]);
+
+        cr.LineWidth = size * 0.11;
+        cr.LineCap = LineCap.Round;
+        cr.NewPath();
+        cr.Arc(cx, cy, radius, start, end);
+        cr.Stroke();
+
+        // The head goes on the start of the arc, pointing back the way the stroke came from, so
+        // the whole sign reads as one continuous turn rather than as a ring with a mark on it.
+        var head = size * 0.17;
+        var tipAngle = start - head / radius;
+
+        cr.NewPath();
+        cr.MoveTo(cx + Math.Cos(tipAngle) * radius, cy + Math.Sin(tipAngle) * radius);
+        cr.LineTo(
+            cx + Math.Cos(start) * (radius - head * 0.72),
+            cy + Math.Sin(start) * (radius - head * 0.72));
+        cr.LineTo(
+            cx + Math.Cos(start) * (radius + head * 0.72),
+            cy + Math.Sin(start) * (radius + head * 0.72));
+        cr.ClosePath();
+        cr.Fill();
+
+        cr.Restore();
+    }
 
     public static void DrawHeap(Context cr, int x, int y, float w, float h, double[] rgba) =>
         Draw(cr, x, y, w, h, rgba, HeapStones);
