@@ -72,6 +72,10 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         byEntity.Attributes.SetInt(AnchorXAttr, blockSel.Position.X);
         byEntity.Attributes.SetInt(AnchorZAttr, blockSel.Position.Z);
 
+        // This hold belongs to the pile, so the release at the end of it must not reach the
+        // throw. See OnHeldInteractStop.
+        byEntity.Attributes.SetInt(HoldAttr, 1);
+
         handling = EnumHandling.PreventSubsequent;
     }
 
@@ -84,6 +88,9 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
     // the same column; it must never wander off and start a new pile somewhere else.
     private const string AnchorXAttr = "acervuslapidum:pileAnchorX";
     private const string AnchorZAttr = "acervuslapidum:pileAnchorZ";
+
+    /// <summary>Set while a hold is feeding a pile, so its release cannot throw a stone.</summary>
+    private const string HoldAttr = "acervuslapidum:pileHold";
 
     /// <summary>
     /// Keeps feeding the pile while the button is held.
@@ -143,6 +150,19 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         return true;
     }
 
+    /// <summary>
+    /// Ends the hold — and, crucially, keeps the release from throwing a stone.
+    ///
+    /// Stones carry vanilla's Throwable, and its OnHeldInteractStop does not ask whether the
+    /// player was ever aiming: any release after its 0.35s windup throws a stone unless
+    /// <c>aimingCancel</c> is set. Placing stones by holding the button is a release after well
+    /// over 0.35s, so every hold used to end with the stone still in hand being lobbed away.
+    /// Vanilla's own ItemStone placement sets the same flag for the same reason.
+    ///
+    /// Both halves matter: PreventSubsequent stops the behaviors behind this one (RockPileable is
+    /// ordered first — see AcervusLapidumModSystem), and the flag covers the case where something
+    /// else has put a Throwable ahead of us.
+    /// </summary>
     public override void OnHeldInteractStop(
         float secondsUsed,
         ItemSlot slot,
@@ -152,6 +172,13 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         ref EnumHandling handling)
     {
         byEntity.Attributes.SetFloat(StepAttr, 0f);
+
+        if (byEntity.Attributes.GetInt(HoldAttr) == 1)
+        {
+            byEntity.Attributes.SetInt(HoldAttr, 0);
+            StopAiming(byEntity);
+            handling = EnumHandling.PreventSubsequent;
+        }
     }
 
     public override bool OnHeldInteractCancel(
@@ -164,6 +191,7 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         ref EnumHandling handled)
     {
         byEntity.Attributes.SetFloat(StepAttr, 0f);
+        byEntity.Attributes.SetInt(HoldAttr, 0);
         return true;
     }
 
@@ -369,10 +397,14 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
     /// <summary>
     /// Stones carry vanilla's Throwable behavior, which starts an aim animation on the same
     /// button. Cancel it, or a player who just placed a stone is left winding up to throw one.
+    ///
+    /// <c>aimingCancel</c> is the load-bearing half: Throwable's stop handler reads that flag and
+    /// nothing else, so clearing <c>aiming</c> alone still lets the release throw a stone.
     /// </summary>
     private static void StopAiming(EntityAgent byEntity)
     {
         byEntity.Attributes.SetInt("aiming", 0);
+        byEntity.Attributes.SetInt("aimingCancel", 1);
         byEntity.StopAnimation("aim");
     }
 
