@@ -111,19 +111,21 @@ class TestCommittedConfig(unittest.TestCase):
             with self.subTest(layout=name):
                 self.assertEqual(len(self.layouts[name]), geo.HEAP_CAPACITY)
 
-    def test_masonry_tiles_every_course(self):
-        """Masonry is the layout that hands back a solid block, so every course has to be full —
-        a gap anywhere means the block is claiming a solidity it does not have."""
-        slots = self.layouts["masonry"]
-        self.assertEqual(len(slots), geo.MAX_SLOTS)
+    def test_masonry_lays_a_full_jointed_course(self):
+        """Masonry is the layout that hands back a solid block, so every course has to be laid
+        out in full — a course short of a stone is a hole in something claiming to be solid.
 
-        by_layer = {}
-        for s in slots:
-            by_layer.setdefault(round(s["y"], 5), []).append(s)
-        self.assertEqual(len(by_layer), geo.LAYERS)
-        for height, course in by_layer.items():
+        Nine, not the twelve that tiled the cube exactly: a jointed course fits three stones an
+        axis, not four, and that is the whole trade. Stones that touch read as one milled slab.
+        """
+        slots = self.layouts["masonry"]
+        courses = courses_of(slots)
+        self.assertEqual(len(courses), geo.LAYERS)
+        for height, course in courses.items():
             with self.subTest(height=height):
-                self.assertEqual(len(course), 12)
+                self.assertEqual(len(course), 9)
+        self.assertEqual(len(slots), 9 * geo.LAYERS)
+        self.assertLessEqual(len(slots), geo.MAX_SLOTS)
 
     def test_bonding_layouts_stagger_their_courses(self):
         """A running bond: each course starts half a stone off the one below, so no vertical
@@ -172,8 +174,14 @@ class TestCommittedConfig(unittest.TestCase):
                     self.assertGreaterEqual(min(abs(a - b) for b in below), clearance)
 
     def test_bonding_layouts_carry_a_stone_across_each_joint(self):
-        """The stone that ties one pile to the next, at whichever ends have a pile to tie to."""
-        half = geo.STONE_LENGTH / 2
+        """The stone that ties one pile to the next, at whichever ends have a pile to tie to.
+
+        The course is mortared to one joint throughout, so its ends are checked against the rhythm
+        its own stones keep: half a joint in from a free face, out onto the boundary where there is
+        a pile to bond to, and a whole joint short of the far face where the pile ahead reaches its
+        own bond stone back over it. Wall lays its stones overlapping rather than jointed, which is
+        the same arithmetic with the joint coming out negative.
+        """
         for name in ("masonry", "wall"):
             course = [s for s in self.layouts[name] if "xBond" in s]
             with self.subTest(layout=name):
@@ -192,14 +200,41 @@ class TestCommittedConfig(unittest.TestCase):
                 (BOND_BEHIND, True, False),
                 (BOND_BOTH, True, True),
             ]:
-                xs = [s["xBond"][bond] for s in course]
-                west = min(xs) - half
-                east = max(xs) + half
+                spans = sorted(
+                    {
+                        (
+                            round(s["xBond"][bond] - half_span_x(s), 5),
+                            round(s["xBond"][bond] + half_span_x(s), 5),
+                        )
+                        for s in course
+                    }
+                )
+                gaps = [start - end for (_, end), (start, _) in zip(spans, spans[1:])]
+                lead = spans[0][1] - spans[0][0]
+
                 with self.subTest(layout=name, bond=bond):
-                    # Near end: crosses the face when there is something to tie into, else flush.
-                    self.assertAlmostEqual(west, -half if behind else 0.0, places=5)
-                    # Far end: stops where the neighbour's own bond stone begins, else flush.
-                    self.assertAlmostEqual(east, 1.0 - half if ahead else 1.0, places=5)
+                    # A joint written out to five decimal places, so the comparisons carry the
+                    # rounding the config was written with rather than chasing it.
+                    tolerance = 3e-5
+
+                    # One joint, kept all the way along the course.
+                    for gap in gaps[1:]:
+                        self.assertAlmostEqual(gap, gaps[0], delta=tolerance)
+
+                    joint = gaps[0]
+                    west, east = spans[0][0], spans[-1][1]
+                    # Near end: crosses the face when there is something to tie into, else stands
+                    # half a joint back from it.
+                    self.assertAlmostEqual(
+                        west, -lead / 2 if behind else joint / 2, delta=tolerance
+                    )
+                    # Far end: leaves the neighbour's own bond stone a joint's clearance, else
+                    # half a joint to the face, the way the near end does.
+                    self.assertAlmostEqual(
+                        east,
+                        1.0 - lead / 2 - joint if ahead else 1.0 - joint / 2,
+                        delta=tolerance,
+                    )
 
     def test_a_lone_bonded_pile_is_symmetric_end_to_end(self):
         """With no neighbours a wall or a masonry block must look the same from either end.
@@ -253,11 +288,13 @@ class TestCommittedConfig(unittest.TestCase):
                     self.assertTrue(lower or upper)
 
     def test_a_course_has_no_hole_wide_enough_to_see_through(self):
-        """Stones may not tile a block exactly, but the slivers left over have to stay slivers."""
-        # Three stones of 0.3125 cover 0.9375 of a block, so 0.0625 of gap has to go somewhere.
-        # Split evenly, that is 0.03125 a side — half a texture pixel at the game's 16px scale,
-        # and the best a symmetric three-stone course can do. Anything wider is a real hole.
-        widest_allowed = 1.0 / 32 + 1e-9
+        """Coursed layouts are jointed, not gappy: the daylight between two stones has to stay a
+        joint. Anything wider is a hole, and on masonry a hole is a block claiming a solidity it
+        does not have."""
+        # The joint masonry lays — the widest any of these courses leaves, because wall overlaps
+        # its stones instead. Measured, not assumed: whatever the course arithmetic settles on is
+        # what every gap in every course has to stay within.
+        widest_allowed = geo.course_joint(geo.MASONRY_COURSES[0], False, False) + 1e-5
 
         for name in ("masonry", "wall"):
             by_layer = {}

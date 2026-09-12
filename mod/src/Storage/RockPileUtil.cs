@@ -34,8 +34,12 @@ public enum RockPileLayoutMode
 public static class RockPileUtil
 {
     /// <summary>
-    /// The most stones any single pile can hold, and so the inventory size. Masonry earns it:
-    /// tiling a whole cube takes twelve stones a course and eight courses.
+    /// The inventory size, and so the ceiling on any layout.
+    ///
+    /// It sits above the largest layout rather than on it. Masonry reaches highest at 72 — nine
+    /// jointed stones a course, eight courses — but it held 96 back when its courses tiled the
+    /// cube face to face, and piles saved then still have to load before
+    /// <see cref="BlockEntityRockPile"/> can hand the surplus back.
     ///
     /// What a *particular* pile holds is the slot count of the layout it is wearing — see
     /// <see cref="RockPileLayoutConfig.ForMode"/>. A heap holds 32, a cairn crown 19, a balanced
@@ -298,7 +302,11 @@ public sealed class RockPileLayoutConfig
     [JsonProperty("wall")]
     public RockPileSlotTransform[] Wall { get; set; } = [];
 
-    /// <summary>A whole cube of coursed stone, and the only layout that yields a solid block.</summary>
+    /// <summary>
+    /// A whole cube of coursed stone, and the only layout that yields a solid block. Nine stones
+    /// to a course, laid with a joint between them rather than face to face: stones that touch
+    /// read as one milled slab, so the course takes the most stones that still leave daylight.
+    /// </summary>
     [JsonProperty("masonry")]
     public RockPileSlotTransform[] Masonry { get; set; } = [];
 

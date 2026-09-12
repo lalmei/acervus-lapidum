@@ -41,12 +41,22 @@ STONE_DEPTH = STONE_DIMS_PX[2] * PX
 # Eight 2px layers fill a block exactly.
 LAYERS = 8
 
+# Coursed layouts leave a joint between neighbouring stones instead of laying them face to face.
+# Two stones that touch share a face exactly, and a course of them reads as one milled slab with
+# lines scored on it; a hair of daylight is what makes the eye count stones again. The joint is
+# not a constant but whatever is left over once a row takes as many stones as it can hold without
+# touching — which is why these layouts hold fewer stones than their axes would otherwise take.
+# Four 4px stones tile a 16px axis exactly, so the row lays three and spends the fourth stone's
+# width on joints. A stone fewer, a pile you can read.
+
 # The loose-pile density vanilla itself uses: its 32-cube heap tops out at y = 14.4px. Heap and
 # neat both hold this, so a pile you just tip on the ground behaves like vanilla's.
 HEAP_CAPACITY = 32
 
-# The largest any layout gets, and so the inventory size. Masonry earns it: tiling a whole cube
-# with 0.31 x 0.25 x 0.125 stones takes 12 a layer. A solid stone block really is that much stone.
+# The inventory size, and so the ceiling on any layout. Masonry is the layout that reaches
+# highest — 9 jointed stones a course, 8 courses — but the ceiling stays where it was, above it:
+# piles saved when masonry tiled its cube hold up to 96 stones, and they have to load before the
+# block entity can hand the surplus back.
 MAX_SLOTS = 96
 
 # Layouts that fill their block solidly enough to stand on. These must never overhang, and so
@@ -219,30 +229,57 @@ def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0, x_bond=None):
     return record
 
 
-def course_positions(count, behind, ahead):
+def coursed_positions(extent, span=1.0):
+    """Centres for a row of identical stones laid along one axis with an even joint between them.
+
+    Half a joint is left at each end too, so the joint carries straight across the block boundary:
+    two piles set side by side course together rather than showing a doubled seam every 16 pixels,
+    and neither one overhangs its own block.
+
+    The row takes the most stones that still leave daylight between them, and the width they give
+    up becomes the joints.
+    """
+    count = max(1, int((span - 1e-9) // extent))
+    return course_positions([extent] * count, False, False)
+
+
+def course_joint(extents, behind, ahead):
+    """The joint this course leaves between one stone and the next.
+
+    Every gap is the same width — the ones inside the course, the half-widths at each face, and
+    the one left for the pile ahead — so the whole run of piles is mortared to a single joint. The
+    ends are what vary: a pile behind takes the first stone out onto the boundary and so needs no
+    leading joint, while a pile ahead reaches its own bond stone back over our far face and needs
+    a whole one.
+    """
+    lead = 0.0 if behind else 0.5
+    trail = 1.0 if ahead else 0.5
+    reach = (1.0 - extents[0] / 2 if ahead else 1.0) - (-extents[0] / 2 if behind else 0.0)
+    return (reach - sum(extents)) / (len(extents) - 1 + lead + trail)
+
+
+def course_positions(extents, behind, ahead):
     """Where a course's stones sit, given what it has to tie into at each end.
 
-    The span it must cover runs from its own -X face to its +X face, except that a bonded end
-    hands part of the job over: a stone crossing the near joint starts half a stone early, and a
-    neighbour ahead brings its own bond stone back over our far end, so we only need to reach the
-    point where that one starts.
+    Left alone the course is a jointed row: half a joint in from each face. A pile behind takes the
+    first stone out onto the boundary itself and the rest follow at the same pitch, which lands the
+    course half a stone off the one below — a running bond. A pile ahead brings its own bond stone
+    back over our far face, so the row stops one joint short of where that one begins.
     """
-    half = STONE_LENGTH / 2
-    start = -half if behind else 0.0
-    end = (1.0 - half) if ahead else 1.0
+    joint = course_joint(extents, behind, ahead)
+    cursor = -extents[0] / 2 if behind else joint / 2
 
-    if count == 1:
-        return [(start + end) / 2]
-
-    first, last = start + half, end - half
-    step = (last - first) / (count - 1)
-    return [first + i * step for i in range(count)]
+    centres = []
+    for extent in extents:
+        centres.append(cursor + extent / 2)
+        cursor += extent + joint
+    return centres
 
 
-def bond_course(count, index):
+def bond_course(extents, index):
     """The four X positions for stone ``index`` of a bond course, in [none, ahead, behind, both]."""
     return [
-        course_positions(count, behind, ahead)[index]
+        course_positions(extents, behind, ahead)[index]
         for behind in (False, True)
         for ahead in (False, True)
     ]
@@ -340,7 +377,7 @@ def build_wall(rng):
         bonded_course = layer % 2 == 1
         for row in range(rows):
             for i in range(per_row):
-                x_bond = bond_course(per_row, i) if bonded_course else None
+                x_bond = bond_course([STONE_LENGTH] * per_row, i) if bonded_course else None
                 slots.append(
                     slot(
                         x_bond[3] if x_bond else (i + 0.5) * spacing,
@@ -355,41 +392,57 @@ def build_wall(rng):
     return slots
 
 
+# A masonry course is three stones across: two laid lengthwise and one turned onto its 4px side.
+# Which end the turned stone sits at swaps every course, and that is what breaks the joints — two
+# courses of identical stones, jointed and symmetric, can only put their joints in the same place.
+MASONRY_COURSES = (
+    (STONE_LENGTH, STONE_LENGTH, STONE_DEPTH),
+    (STONE_DEPTH, STONE_LENGTH, STONE_LENGTH),
+)
+
+
 def build_masonry(rng):
     """A whole cube of coursed stone — the layout that gives you a solid block back.
 
-    Twelve stones tile a layer either way round, because the stone is 5 x 4 px on the floor: three
-    lengths across by four depths, or — turned a quarter — four depths across by three lengths.
-    Alternating the two every course is a running bond. No joint in one course lines up with a
-    joint in the course below it, so a finished pile reads as laid masonry rather than as twelve
-    stone columns standing on each other, which is what a single repeated course looked like.
+    Nine stones to a course, three across by three deep, every one of them laid with a joint
+    between it and the next. That joint is the whole difference from the twelve-a-course version
+    this replaced: twelve stones tiled the cube exactly, face to face, and the pile came out as a
+    smooth block with a grid scored on it rather than as stones someone had laid. Three courses of
+    stone short is what the joint costs, and it is worth it.
 
-    The turned course is the one that does the staggering *inside* the block; the straight course
-    is the one that carries a bond stone across the joint with the pile next door, because
-    ``course_positions`` measures in stone lengths and only the straight course lies that way.
-    Alternating them means the block boundary is bridged every other course, which is all the
-    seam needs.
+    The joint is the same width everywhere — inside the course, at each face, and across the seam
+    into the pile next door — so a run of masonry piles reads as one mortared wall.
+
+    Joints still have to break course to course or the pile reads as columns. Alternating the
+    turned stone between the two ends of the course is what does it: the joints of one course land
+    a full pixel clear of the joints of the one below. The lengthwise stone leading each bond
+    course is also the one that carries across the seam, because a through stone crosses the joint
+    on its long face.
+
+    Courses sit straight on top of one another, with no bed joint. A gap there would leave every
+    stone floating a hair above the one below, and would stop the top course finishing flush with
+    the ceiling — which is what lets masonry piles stack into a wall.
     """
     # No jitter anywhere in here. Every other layout gets a degree or two of slop to look laid by
-    # hand, but this one has to fit its own cube exactly to be allowed to call itself solid, and a
+    # hand, but this one has to stay inside its own cube to be allowed to call itself solid, and a
     # dressed, coursed wall is square in any case.
     slots = []
     for layer in range(LAYERS):
-        # Straight courses run the stone's 5px length along X and bond to the neighbouring pile;
-        # turned courses run its 4px depth along X, which tiles the block exactly, four across.
-        turned = layer % 2 == 1
-        cols, rows = (4, 3) if turned else (3, 4)
-        yaw = 90.0 if turned else 0.0
+        extents = MASONRY_COURSES[layer % 2]
+        # Bond the course that leads with a stretcher; the other one breaks the joints instead.
+        bonded = layer % 2 == 0
+        centres = course_positions(extents, False, False)
 
-        for col in range(cols):
-            x_bond = None if turned else bond_course(cols, col)
-            for row in range(rows):
+        for col, extent in enumerate(extents):
+            turned = extent == STONE_DEPTH
+            x_bond = None if not bonded else bond_course(extents, col)
+            for z in coursed_positions(STONE_LENGTH if turned else STONE_DEPTH):
                 slots.append(
                     slot(
-                        x_bond[3] if x_bond else (col + 0.5) / cols,
+                        x_bond[3] if x_bond else centres[col],
                         layer * STONE_HEIGHT,
-                        (row + 0.5) / rows,
-                        yaw,
+                        z,
+                        90.0 if turned else 0.0,
                         x_bond=x_bond,
                     )
                 )
@@ -449,26 +502,34 @@ def build_spiral(rng):
 
 
 def build_steps(rng):
-    """A flight of four steps, each two courses higher than the last.
+    """A flight of three steps, the top one finishing flush with the block's ceiling.
 
     Solid all the way down — every stone rests on stone, not on air — so it works as a mounting
     block or a stile beside a wall rather than being purely decorative.
+
+    Treads are a jointed row like the masonry courses, and that is what takes the flight from four
+    steps to three: four 4px treads tile the block exactly and would have to touch, which made the
+    flight read as a single ramp of stone. Three leave a joint at every nosing, and the rises share
+    the block's eight courses between them so the climb still arrives at the top.
 
     A stair taller than one block is built the way a real one is: this flight goes on top, and the
     pile underneath fills in solid to carry it. The block entity swaps a steps pile onto the
     masonry slots as soon as something is stacked above it, so the climb continues instead of
     restarting at the bottom of every block.
     """
-    steps, across = 4, 3
+    treads = coursed_positions(STONE_DEPTH)
+    across = coursed_positions(STONE_LENGTH)
     slots = []
-    for step in range(steps):
-        for layer in range((step + 1) * 2):
-            for col in range(across):
+    for step, z in enumerate(treads):
+        # Round up, so the top tread reaches the ceiling rather than stopping a course short.
+        height = math.ceil(LAYERS * (step + 1) / len(treads))
+        for layer in range(height):
+            for x in across:
                 slots.append(
                     slot(
-                        (col + 0.5) / across,
+                        x,
                         layer * STONE_HEIGHT,
-                        (step + 0.5) / steps,
+                        z,
                         rng.uniform(-2.0, 2.0),
                     )
                 )

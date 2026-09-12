@@ -182,7 +182,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// <summary>
     /// Hands back any stone the current layout has no slot for.
     ///
-    /// Layouts hold wildly different amounts — 96 for masonry, 7 for a balanced stack — so
+    /// Layouts hold wildly different amounts — 72 for masonry, 7 for a balanced stack — so
     /// restyling a full pile routinely leaves stones with nowhere to sit. They pop out as items
     /// at your feet. The alternative, keeping them in the inventory unrendered, would quietly
     /// break the one thing this pile promises: that what you see is what is in it.
