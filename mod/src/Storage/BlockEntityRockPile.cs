@@ -44,6 +44,11 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// so its bond courses have something to tie into. Both ends are tracked: a course that only
     /// knew about one of them left the other end of a run notched open. See
     /// <see cref="RockPileSlotTransform.XBond"/>.
+    ///
+    /// Walls need this; masonry does not. A masonry course that starts on the block face crosses
+    /// it whatever is next door, because a solid pile is always drawn square and so every one of
+    /// them crosses the same way — the tooth of one lands in the notch of the next without either
+    /// having to know.
     /// </summary>
     private bool bondedBehind;
 
@@ -230,6 +235,11 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// its corners a fifth of a block into the neighbour, which is not something a block claiming
     /// to be solid may do. It also would not read as anything — the bond already alternates every
     /// course, so a turned cube looks like an untuned one.
+    ///
+    /// The bond leans on this. A masonry course that starts on the block face hangs half a stone
+    /// into the pile next door; because every masonry pile is drawn at the same angle, that tooth
+    /// always points the same way and always lands in the notch its neighbour left, rather than
+    /// two piles reaching for the same space.
     /// </summary>
     public float YawDeg => RockPileUtil.IsSolidLayout(layoutMode, loadAbove)
         ? 0f

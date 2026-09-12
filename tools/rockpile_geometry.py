@@ -41,6 +41,23 @@ STONE_DEPTH = STONE_DIMS_PX[2] * PX
 # Eight 2px layers fill a block exactly.
 LAYERS = 8
 
+# Three stones an axis, a third of a block apart. Four would tile the 4px axis exactly, face to
+# face, and a course of touching stones reads as one milled slab rather than as stones someone
+# laid — so a course holds three and spends the fourth stone's width on joints you can pack clay
+# into.
+COURSE_STONES = 3
+COURSE_PITCH = 1.0 / COURSE_STONES
+
+# Where each course starts, as a flag per axis: 0 begins half a pitch in, 1 begins on the block
+# face. Courses have to break their joints, or a pile is columns of stone with slots between them
+# rather than a bond — and with joints running both ways, breaking them takes four courses, not
+# two. A course's mortar is a cross-hatch; slide a second cross-hatch half a pitch over the first
+# and its x lines still cross the other's z lines, leaving daylight from the ceiling to the floor.
+# Four starts cover every point: wherever one course is open, one of the other three is stone, so
+# every gap is a pocket with stone above and below it rather than a hole through the block. x
+# alternates every course, which is what the long faces show; z alternates every other one.
+COURSE_STARTS = ((0, 0), (1, 1), (0, 1), (1, 0))
+
 # Coursed layouts leave a joint between neighbouring stones instead of laying them face to face.
 # Two stones that touch share a face exactly, and a course of them reads as one milled slab with
 # lines scored on it; a hair of daylight is what makes the eye count stones again. The joint is
@@ -229,18 +246,26 @@ def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0, x_bond=None):
     return record
 
 
-def coursed_positions(extent, span=1.0):
-    """Centres for a row of identical stones laid along one axis with an even joint between them.
+def course_lattice(start, crossing=True):
+    """Where a coursed layout puts its stones along one axis, for a course with this start.
 
-    Half a joint is left at each end too, so the joint carries straight across the block boundary:
-    two piles set side by side course together rather than showing a doubled seam every 16 pixels,
-    and neither one overhangs its own block.
+    One lattice serves both axes: three stones an axis, a third of a block apart. The stone is 5px
+    one way and 4px the other, so the same pitch leaves a 1/3px joint across a course and a 1 1/3px
+    joint through it — daylight either way, which is the point, and nothing has to be turned to
+    make it fit. A course of stones all facing the same way is what a wall looks like.
 
-    The row takes the most stones that still leave daylight between them, and the width they give
-    up becomes the joints.
+    A course that starts on the face (``start`` 1) centres its first stone on the block boundary,
+    half of it in the pile next door, and leaves exactly that much notch at its far face for the
+    neighbour's own. A run of piles courses straight through the boundary as if it were not there;
+    on its own a pile shows that as teeth, which is what an unfinished wall end looks like anyway.
+
+    ``crossing`` False keeps that stone home, at the cost of the outermost one in the course. Piles
+    that can be turned to a diagonal want this: a stone hanging off a corner sweeps much further
+    into the neighbouring block than one hanging off a face.
     """
-    count = max(1, int((span - 1e-9) // extent))
-    return course_positions([extent] * count, False, False)
+    first = 0.0 if start else COURSE_PITCH / 2
+    positions = [first + i * COURSE_PITCH for i in range(COURSE_STONES)]
+    return positions if (not start or crossing) else positions[1:]
 
 
 def course_joint(extents, behind, ahead):
@@ -392,60 +417,33 @@ def build_wall(rng):
     return slots
 
 
-# A masonry course is three stones across: two laid lengthwise and one turned onto its 4px side.
-# Which end the turned stone sits at swaps every course, and that is what breaks the joints — two
-# courses of identical stones, jointed and symmetric, can only put their joints in the same place.
-MASONRY_COURSES = (
-    (STONE_LENGTH, STONE_LENGTH, STONE_DEPTH),
-    (STONE_DEPTH, STONE_LENGTH, STONE_LENGTH),
-)
-
-
 def build_masonry(rng):
     """A whole cube of coursed stone — the layout that gives you a solid block back.
 
-    Nine stones to a course, three across by three deep, every one of them laid with a joint
-    between it and the next. That joint is the whole difference from the twelve-a-course version
-    this replaced: twelve stones tiled the cube exactly, face to face, and the pile came out as a
-    smooth block with a grid scored on it rather than as stones someone had laid. Three courses of
-    stone short is what the joint costs, and it is worth it.
+    Nine stones a course, three by three on the lattice, every one laid the same way round with a
+    joint between it and its neighbours. Courses start from the four corners of the lattice in
+    turn, so no gap in one course is open in the course above or below it: the gaps are pockets,
+    not holes. Pack them with clay and the pile is a cobbled block; leave them and it is a
+    dry-stone one.
 
-    The joint is the same width everywhere — inside the course, at each face, and across the seam
-    into the pile next door — so a run of masonry piles reads as one mortared wall.
-
-    Joints still have to break course to course or the pile reads as columns. Alternating the
-    turned stone between the two ends of the course is what does it: the joints of one course land
-    a full pixel clear of the joints of the one below. The lengthwise stone leading each bond
-    course is also the one that carries across the seam, because a through stone crosses the joint
-    on its long face.
+    Masonry is drawn square whatever way the pile is turned — see BlockEntityRockPile.YawDeg — so
+    its courses can afford to cross the block face: the tooth always points the same way, lands in
+    the notch its neighbour left, and a run of piles courses through the boundary with no seam at
+    any width.
 
     Courses sit straight on top of one another, with no bed joint. A gap there would leave every
     stone floating a hair above the one below, and would stop the top course finishing flush with
     the ceiling — which is what lets masonry piles stack into a wall.
     """
     # No jitter anywhere in here. Every other layout gets a degree or two of slop to look laid by
-    # hand, but this one has to stay inside its own cube to be allowed to call itself solid, and a
-    # dressed, coursed wall is square in any case.
+    # hand, but a dressed, coursed wall is square, and the bond only reads if the stones above a
+    # joint sit squarely over it.
     slots = []
     for layer in range(LAYERS):
-        extents = MASONRY_COURSES[layer % 2]
-        # Bond the course that leads with a stretcher; the other one breaks the joints instead.
-        bonded = layer % 2 == 0
-        centres = course_positions(extents, False, False)
-
-        for col, extent in enumerate(extents):
-            turned = extent == STONE_DEPTH
-            x_bond = None if not bonded else bond_course(extents, col)
-            for z in coursed_positions(STONE_LENGTH if turned else STONE_DEPTH):
-                slots.append(
-                    slot(
-                        x_bond[3] if x_bond else centres[col],
-                        layer * STONE_HEIGHT,
-                        z,
-                        90.0 if turned else 0.0,
-                        x_bond=x_bond,
-                    )
-                )
+        along, across = COURSE_STARTS[layer % len(COURSE_STARTS)]
+        for x in course_lattice(along):
+            for z in course_lattice(across):
+                slots.append(slot(x, layer * STONE_HEIGHT, z))
     return slots
 
 
@@ -507,24 +505,27 @@ def build_steps(rng):
     Solid all the way down — every stone rests on stone, not on air — so it works as a mounting
     block or a stile beside a wall rather than being purely decorative.
 
-    Treads are a jointed row like the masonry courses, and that is what takes the flight from four
-    steps to three: four 4px treads tile the block exactly and would have to touch, which made the
-    flight read as a single ramp of stone. Three leave a joint at every nosing, and the rises share
-    the block's eight courses between them so the climb still arrives at the top.
+    Treads sit on the same lattice as masonry, three of them, and each tread is coursed the same
+    way: the stones alternate half a pitch as they rise, so the flight is bonded rather than three
+    columns of stone standing on each other. Four treads would have had to touch, which is what
+    made the flight read as a ramp.
 
     A stair taller than one block is built the way a real one is: this flight goes on top, and the
     pile underneath fills in solid to carry it. The block entity swaps a steps pile onto the
     masonry slots as soon as something is stacked above it, so the climb continues instead of
     restarting at the bottom of every block.
     """
-    treads = coursed_positions(STONE_DEPTH)
-    across = coursed_positions(STONE_LENGTH)
+    treads = course_lattice(0)
     slots = []
     for step, z in enumerate(treads):
         # Round up, so the top tread reaches the ceiling rather than stopping a course short.
         height = math.ceil(LAYERS * (step + 1) / len(treads))
         for layer in range(height):
-            for x in across:
+            # A flight can be turned to a diagonal, so its courses keep their stones at home and
+            # give up the outer one instead: half a stone of notch at alternate ends, rather than
+            # a stone swinging out over the corner.
+            along = COURSE_STARTS[layer % len(COURSE_STARTS)][0]
+            for x in course_lattice(along, crossing=False):
                 slots.append(
                     slot(
                         x,
@@ -680,6 +681,94 @@ def build_layouts(game_path: Path):
     return layouts
 
 
+# --- the drawing that explains the bond ---------------------------------------------------------
+
+DIAGRAM_SCALE = 9.0  # svg units per game pixel
+
+
+def _svg_stone(x, z, w, d, fill, edge, opacity=1.0):
+    return (f'<rect x="{(x - w / 2) * 16 * DIAGRAM_SCALE:.2f}" '
+            f'y="{(z - d / 2) * 16 * DIAGRAM_SCALE:.2f}" '
+            f'width="{w * 16 * DIAGRAM_SCALE:.2f}" height="{d * 16 * DIAGRAM_SCALE:.2f}" '
+            f'fill="{fill}" fill-opacity="{opacity}" stroke="{edge}" stroke-width="0.9"/>')
+
+
+def _svg_block(ox=0.0):
+    side = 16 * DIAGRAM_SCALE
+    return (f'<rect x="{ox * side:.2f}" y="0" width="{side:.2f}" height="{side:.2f}" '
+            f'fill="none" stroke="#2f2a24" stroke-width="1.6"/>')
+
+
+def masonry_diagram(layouts):
+    """The masonry bond, drawn from the layout that was just generated.
+
+    Generated rather than hand-drawn on purpose: a diagram of a bond is exactly the kind of
+    drawing that quietly stops matching the thing it explains. This one cannot, because it reads
+    the same slots the game does.
+    """
+    courses = {}
+    for s in layouts["masonry"]:
+        courses.setdefault(round(s["y"], 5), []).append(s)
+    courses = [courses[y] for y in sorted(courses)]
+    starts = courses[:len(COURSE_STARTS)]
+
+    side = 16 * DIAGRAM_SCALE
+    stone, edge = "#b9b2a7", "#6f6960"
+    out = []
+
+    def panel(ox, oy, body, title):
+        out.append(f'<g transform="translate({ox},{oy})">')
+        out.append(f'<text x="0" y="-9" class="h">{title}</text>')
+        out.extend(body)
+        out.append("</g>")
+
+    # The four starts, in plan.
+    for i, course in enumerate(starts):
+        body = [_svg_block()]
+        body += [_svg_stone(s["x"], s["z"], STONE_LENGTH, STONE_DEPTH, stone, edge) for s in course]
+        body.append(_svg_block())
+        panel(40 + i * (side + 26), 110, body, f"course {i + 1}")
+
+    # All four at once: what is still white is what no course covers.
+    body = [_svg_block()]
+    for course in starts:
+        body += [_svg_stone(s["x"], s["z"], STONE_LENGTH, STONE_DEPTH, "#8c8377", "none", 0.45)
+                 for s in course]
+    body.append(_svg_block())
+    panel(40 + 4 * (side + 26), 110, body, "all four together")
+
+    # Elevations of two piles side by side, along and across the courses.
+    for k, (extent, label) in enumerate(((STONE_LENGTH, "along the courses (x), two piles"),
+                                         (STONE_DEPTH, "across them (z), two piles"))):
+        body = [_svg_block(0), _svg_block(1)]
+        for pile in (0, 1):
+            for c, course in enumerate(courses):
+                y = 1.0 - (c + 1) * STONE_HEIGHT
+                seen = sorted({round(s["x"] if k == 0 else s["z"], 5) for s in course})
+                body += [_svg_stone(pile + at, y + STONE_HEIGHT / 2, extent, STONE_HEIGHT,
+                                    stone, edge) for at in seen]
+        body += [_svg_block(0), _svg_block(1)]
+        panel(40 + k * (2 * side + 60), 420, body, label)
+
+    width, height = 80 + 5 * (side + 26), 560 + side
+    return "\n".join([
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
+        f'viewBox="0 0 {width:.0f} {height:.0f}">',
+        f'<rect width="{width:.0f}" height="{height:.0f}" fill="#ffffff"/>',
+        '<style>.t{font:600 19px system-ui,sans-serif;fill:#2f2a24}'
+        '.s{font:13px system-ui,sans-serif;fill:#5d564e}'
+        '.h{font:600 12px system-ui,sans-serif;fill:#2f2a24}</style>',
+        '<text x="40" y="44" class="t">The masonry bond</text>',
+        '<text x="40" y="68" class="s">Nine stones a course, all facing the same way, a third of a '
+        'block apart. Each course starts from a different corner of the lattice, so no gap is open '
+        'in the course above or below it.</text>',
+        '<text x="40" y="86" class="s">Courses that start on the face hang half a stone into the '
+        'pile next door, and leave exactly that notch at the far face for their neighbour\'s.</text>',
+        *out,
+        "</svg>",
+    ]) + "\n"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -692,6 +781,11 @@ def main():
         default="mod/assets/acervuslapidum/config/rockpile-layout.json",
         help="where to write the generated layout config",
     )
+    parser.add_argument(
+        "--diagram",
+        default="docs/masonry-bond.svg",
+        help="where to write the drawing of the masonry bond that the README links",
+    )
     args = parser.parse_args()
 
     layouts = build_layouts(Path(args.game))
@@ -700,6 +794,11 @@ def main():
     out.write_text(json.dumps(layouts, indent=2) + "\n")
     total = sum(len(v) for v in layouts.values())
     print(f"Wrote {len(layouts)} layouts, {total} slots to {out}")
+
+    diagram = Path(args.diagram)
+    diagram.parent.mkdir(parents=True, exist_ok=True)
+    diagram.write_text(masonry_diagram(layouts))
+    print(f"Wrote the masonry bond drawing to {diagram}")
 
 
 if __name__ == "__main__":

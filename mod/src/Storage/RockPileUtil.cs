@@ -306,6 +306,11 @@ public sealed class RockPileLayoutConfig
     /// A whole cube of coursed stone, and the only layout that yields a solid block. Nine stones
     /// to a course, laid with a joint between them rather than face to face: stones that touch
     /// read as one milled slab, so the course takes the most stones that still leave daylight.
+    ///
+    /// Courses start from four different corners of the lattice in turn, so every gap has a stone
+    /// above and below it — a pocket to pack, not a hole through a block that claims to be solid.
+    /// Two alternating courses cannot manage that: the joints of one run across the joints of the
+    /// other. See docs/masonry-bond.svg, which the generator draws from these very slots.
     /// </summary>
     [JsonProperty("masonry")]
     public RockPileSlotTransform[] Masonry { get; set; } = [];

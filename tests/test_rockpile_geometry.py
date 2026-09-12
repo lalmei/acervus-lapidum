@@ -51,6 +51,44 @@ def courses_of(slots):
     return by_layer
 
 
+def footprint(s):
+    """The block-space rectangle this slot's stone covers, as (x0, x1, z0, z1)."""
+    quarter = round(s["yawDeg"] / 90.0) % 2
+    half_x = (geo.STONE_DEPTH if quarter else geo.STONE_LENGTH) / 2
+    half_z = (geo.STONE_LENGTH if quarter else geo.STONE_DEPTH) / 2
+    return (s["x"] - half_x, s["x"] + half_x, s["z"] - half_z, s["z"] + half_z)
+
+
+def daylight(courses, tiles=(0.0,), region=(0.0, 1.0, 0.0, 1.0)):
+    """The area of ``region`` that no course covers — daylight straight through the pile.
+
+    ``tiles`` repeats each course at the given offsets, which is how a pile renders with its
+    neighbours: the stone one pile hangs over its near face lands in the notch the pile behind
+    left at its far one. ``region`` narrows the question to part of the block.
+
+    Exact rather than sampled: every stone edge is a breakpoint, so testing one point per cell of
+    the grid those breakpoints make settles the whole area.
+    """
+    left, right, front, back = region
+    boxes = [
+        (x0 + dx, x1 + dx, z0 + dz, z1 + dz)
+        for course in courses
+        for x0, x1, z0, z1 in (footprint(s) for s in course)
+        for dx in tiles
+        for dz in tiles
+    ]
+    xs = sorted({left, right} | {v for b in boxes for v in b[:2] if left < v < right})
+    zs = sorted({front, back} | {v for b in boxes for v in b[2:] if front < v < back})
+
+    open_area = 0.0
+    for x0, x1 in zip(xs, xs[1:]):
+        for z0, z1 in zip(zs, zs[1:]):
+            x, z = (x0 + x1) / 2, (z0 + z1) / 2
+            if not any(bx0 < x < bx1 and bz0 < z < bz1 for bx0, bx1, bz0, bz1 in boxes):
+                open_area += (x1 - x0) * (z1 - z0)
+    return open_area
+
+
 def spun(s, yaw_deg):
     """A slot as the pile draws it once turned by the pile's own orientation."""
     dx, dz = s["x"] - 0.5, s["z"] - 0.5
@@ -180,9 +218,11 @@ class TestCommittedConfig(unittest.TestCase):
         its own stones keep: half a joint in from a free face, out onto the boundary where there is
         a pile to bond to, and a whole joint short of the far face where the pile ahead reaches its
         own bond stone back over it. Wall lays its stones overlapping rather than jointed, which is
-        the same arithmetic with the joint coming out negative.
+        the same arithmetic with the joint coming out negative. Masonry is not here: its offset
+        courses cross the near face outright, the same way in every pile, so it needs no xBond to
+        arbitrate who lays the stone in a joint.
         """
-        for name in ("masonry", "wall"):
+        for name in ("wall",):
             course = [s for s in self.layouts[name] if "xBond" in s]
             with self.subTest(layout=name):
                 self.assertTrue(course, "no bond courses at all")
@@ -242,8 +282,13 @@ class TestCommittedConfig(unittest.TestCase):
         It did not: the course only reasoned about the pile behind it, so the far end was left
         notched open — by 0.094 on a wall and 0.177 on masonry — while the near end sat flush.
         Turning the pile round swapped which end was which.
+
+        Masonry is deliberately not symmetric any more: its offset courses hang a stone over the
+        near face and leave the matching notch at the far one, which is what carries the bond
+        through a block boundary. It cannot flip on you, because a solid pile is always drawn
+        square — see BlockEntityRockPile.YawDeg.
         """
-        for name in ("masonry", "wall"):
+        for name in ("wall",):
             for height, course in courses_of(self.layouts[name]).items():
                 spans = [
                     (posed(s)["x"] - half_span_x(s), posed(s)["x"] + half_span_x(s))
@@ -294,7 +339,7 @@ class TestCommittedConfig(unittest.TestCase):
         # The joint masonry lays — the widest any of these courses leaves, because wall overlaps
         # its stones instead. Measured, not assumed: whatever the course arithmetic settles on is
         # what every gap in every course has to stay within.
-        widest_allowed = geo.course_joint(geo.MASONRY_COURSES[0], False, False) + 1e-5
+        widest_allowed = geo.COURSE_PITCH - geo.STONE_LENGTH + 1e-5
 
         for name in ("masonry", "wall"):
             by_layer = {}
@@ -310,6 +355,34 @@ class TestCommittedConfig(unittest.TestCase):
                     with self.subTest(layout=name, height=height):
                         self.assertLessEqual(max(0.0, start_x - reach), widest_allowed)
                     reach = max(reach, end_x)
+
+    def test_masonry_gaps_are_pockets_rather_than_holes(self):
+        """The gaps are there to be packed with clay, so every one of them needs a stone above and
+        below it. Daylight from the ceiling to the floor would be a gap with nothing to pack
+        against — and a solid block you can see through.
+
+        Two courses cannot do this. A course's mortar is a cross-hatch, and however far a second
+        cross-hatch slides over the first, the x lines of one still cross the z lines of the other.
+        Four course starts close every one of those crossings.
+        """
+        courses = list(courses_of(self.layouts["masonry"]).values())
+
+        # As a wall: the stone each pile hangs over its near face fills the notch behind it, so
+        # not one point of the footprint is open all the way through.
+        self.assertAlmostEqual(daylight(courses, tiles=(-1.0, 0.0, 1.0)), 0.0, places=6)
+
+        # On its own, what is open is the notch waiting for that neighbour, and only that: a rim
+        # against the two far faces, no wider than the stone that fills it, and never a hole in
+        # the body of the block.
+        inside = (0.0, 1.0 - geo.STONE_LENGTH / 2, 0.0, 1.0 - geo.STONE_DEPTH / 2)
+        self.assertAlmostEqual(daylight(courses, region=inside), 0.0, places=6)
+
+    def test_the_committed_drawing_matches_the_committed_config(self):
+        """docs/masonry-bond.svg is drawn from the layout rather than by hand, and committed, so
+        the README's picture of the bond cannot quietly stop matching the bond."""
+        drawing = ROOT / "docs/masonry-bond.svg"
+        self.assertTrue(drawing.exists(), "the README links this drawing")
+        self.assertEqual(drawing.read_text(), geo.masonry_diagram(self.layouts))
 
     def test_cairn_segments_hold_fewer_stones_as_they_narrow(self):
         counts = [len(self.layouts[f"cairn{i}"]) for i in range(geo.CAIRN_SEGMENTS)]
@@ -382,23 +455,40 @@ class TestCommittedConfig(unittest.TestCase):
     def test_no_layout_overhangs_further_than_vanillas_own_heap(self):
         """Stones do stick out of a pile — vanilla's heap included, by design. What must hold is
         that nothing we author reaches further past the block than vanilla already does, so a
-        pile never intrudes on a neighbour worse than the game's own."""
+        pile never intrudes on a neighbour worse than the game's own.
+
+        Masonry is the exception, and a deliberate one: its offset courses centre a stone on the
+        block face to carry the bond across it. That stone is allowed exactly half of itself, and
+        the pile next door left a notch of exactly that size waiting for it.
+        """
         budget = max(overhang(s) for s in self.layouts["heap"])
         self.assertLess(budget, 0.25, "vanilla heap overhang is larger than assumed")
 
         for name, slots in self.layouts.items():
+            allowed = geo.STONE_LENGTH / 2 if name in geo.SOLID_LAYOUTS else budget
             for i, s in enumerate(slots):
                 with self.subTest(layout=name, slot=i):
-                    self.assertLessEqual(overhang(standalone(s)), budget + 1e-6)
+                    self.assertLessEqual(overhang(standalone(s)), allowed + 1e-6)
 
-    def test_solid_layouts_stay_entirely_inside_their_block(self):
-        """Masonry claims to be a solid block — walkable, buildable, face-culling. A stone poking
-        out of it would be visibly lying, so it must fit its own cube exactly, and it is pinned
-        square for the same reason (see BlockEntityRockPile.YawDeg)."""
+    def test_solid_layouts_keep_every_stone_seated_in_their_own_block(self):
+        """Masonry claims to be a solid block — walkable, buildable, face-culling — and it is
+        pinned square for that reason (see BlockEntityRockPile.YawDeg).
+
+        Its offset courses do hang a stone over the near face, which is what bonds one pile to the
+        next. What must hold is that the stone is still seated in this block: its centre stays
+        inside, so no more than half of it is ever in the neighbour's, and it is square to the
+        faces rather than poking a corner through them.
+        """
         for name in geo.SOLID_LAYOUTS:
             for i, s in enumerate(self.layouts[name]):
                 with self.subTest(layout=name, slot=i):
-                    self.assertAlmostEqual(overhang(standalone(s)), 0.0, places=6)
+                    self.assertAlmostEqual(s["yawDeg"] % 90.0, 0.0, places=6)
+                    self.assertAlmostEqual(s["pitchDeg"], 0.0, places=6)
+                    self.assertAlmostEqual(s["rollDeg"], 0.0, places=6)
+                    self.assertGreaterEqual(s["x"], 0.0)
+                    self.assertLessEqual(s["x"], 1.0)
+                    self.assertGreaterEqual(s["z"], 0.0)
+                    self.assertLessEqual(s["z"], 1.0)
 
     def test_turning_a_pile_never_makes_it_spill_much_further(self):
         """Piles turn in 45 degree steps, and a square arrangement is at its widest on the
