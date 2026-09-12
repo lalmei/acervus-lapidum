@@ -264,9 +264,8 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         var pile = FindTargetPile(world, blockSel);
         if (pile is not null)
         {
-            // A full pile does not swallow more stones — it carries the next course instead, so
-            // fall through and let the click start a new segment on top of it.
-            if (!pile.IsFull || blockSel.Face != BlockFacing.UP)
+            // A course with room in it takes the stone, whichever face the click landed on.
+            if (!pile.IsFull)
             {
                 if (pile.OnPlayerInteract(byPlayer, blockSel))
                 {
@@ -277,18 +276,51 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
 
                 return false;
             }
-        }
 
-        // Never build on top of a vanilla ground storage pile; the converter turns those into
-        // rock piles on load, and until it has, they are not ours to stack on.
-        if (pile is null && FindTargetGroundStorage(world, blockSel) is not null)
-        {
-            return false;
-        }
+            // A full course does not swallow more stones — it carries the next one — so the click
+            // is handed up the column instead of being thrown away.
+            //
+            // This is what makes a cairn buildable. Every course above the first is narrower than
+            // the one below, so the finished course underneath keeps a rim of its own sticking out
+            // all the way up, and that rim is what the crosshair lands on from anywhere but
+            // directly overhead. Demanding that the click hit the topmost segment meant a cairn
+            // got harder to aim at with every course, and clicking the obvious wide target — the
+            // finished base — did nothing at all. Now it does the only thing it could sensibly
+            // mean: carry on building this column.
+            var open = FindOpenPileAbove(world, pile, out var topFull);
+            if (open is not null)
+            {
+                if (open.OnPlayerInteract(byPlayer, blockSel))
+                {
+                    StopAiming(byEntity);
+                    handHandling = EnumHandHandling.PreventDefault;
+                    return true;
+                }
 
-        if (blockSel.Face != BlockFacing.UP)
+                return false;
+            }
+
+            // Every course up to topFull is finished and nothing sits above it, so start the next
+            // one there. Only Position and Face are read from here on.
+            blockSel = new BlockSelection
+            {
+                Position = topFull,
+                Face = BlockFacing.UP
+            };
+        }
+        else
         {
-            return false;
+            // Never build on top of a vanilla ground storage pile; the converter turns those into
+            // rock piles on load, and until it has, they are not ours to stack on.
+            if (FindTargetGroundStorage(world, blockSel) is not null)
+            {
+                return false;
+            }
+
+            if (blockSel.Face != BlockFacing.UP)
+            {
+                return false;
+            }
         }
 
         if (world.GetBlock(RockPileUtil.BlockCode) is not BlockRockPile pileBlock)
@@ -330,6 +362,40 @@ public sealed class CollectibleBehaviorRockPileable : CollectibleBehavior
         byEntity.Attributes.SetInt("aiming", 0);
         byEntity.Attributes.SetInt("aimingCancel", 1);
         byEntity.StopAnimation("aim");
+    }
+
+    /// <summary>
+    /// Walks up a column of finished courses, starting from one that is already full.
+    ///
+    /// Hands back the first pile above it that still has room, or null when the whole column is
+    /// finished — in which case <paramref name="topFull"/> is the last course in it, the one the
+    /// next course starts on.
+    ///
+    /// Walking rather than looking one block up is what lets a tall cairn be built from the
+    /// ground: the base stays the easiest thing to click however high the cairn gets, so a click
+    /// on it has to find the working course wherever that has reached. The full-course rule is
+    /// unchanged — the walk only ever passes *through* courses that are already finished, so it
+    /// can never skip over a half-built one to stack on top of a gap.
+    /// </summary>
+    private static BlockEntityRockPile? FindOpenPileAbove(
+        IWorldAccessor world,
+        BlockEntityRockPile from,
+        out BlockPos topFull)
+    {
+        topFull = from.Pos.Copy();
+
+        while (topFull.Y + 1 < world.BlockAccessor.MapSizeY
+               && world.BlockAccessor.GetBlockEntity(topFull.UpCopy()) is BlockEntityRockPile above)
+        {
+            if (!above.IsFull)
+            {
+                return above;
+            }
+
+            topFull = above.Pos.Copy();
+        }
+
+        return null;
     }
 
     public static BlockEntityRockPile? FindTargetPile(IWorldAccessor world, BlockSelection blockSel)

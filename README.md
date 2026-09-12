@@ -54,6 +54,13 @@ sneak + right-click and made every hard stone unknappable.
 A pile only becomes solid on top once it is **full**, so you finish a course before you start the
 next. That one rule is the whole cairn mechanic.
 
+You do not have to aim at the course you are actually building. Adding a stone to any **finished**
+pile carries the click up its own column: the stone lands in the first course above with room in
+it, or starts a new one on top of the last full course. That matters as a cairn gets tall, because
+each course is narrower than the one under it — the wide base stays the easiest thing to hit, so
+that is what you are allowed to click. The walk only ever passes through courses that are already
+full, so it still cannot stack on top of a course with gaps in it.
+
 How many stones "full" means depends on how the pile is laid, because it is measured rather than
 decided:
 
