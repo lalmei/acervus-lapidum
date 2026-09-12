@@ -62,7 +62,7 @@ decided:
 | Spiral | 32 | |
 | Wall | 64 | eight courses of eight — stacks, and bonds to its neighbours |
 | Cairn | 40 / 28 / 19 | footing, body, shoulder — see below |
-| Steps | 51 | a flight of three jointed treads; fills solid to 72 once loaded |
+| Steps | 43 | a flight of three bonded treads; fills solid to 72 once loaded |
 | Hearth ring | 18 | hollow middle |
 | Twin columns | 16 | |
 | Arrow | 28 | a waypoint marker; turn it to aim it |
@@ -81,29 +81,37 @@ A balanced stack holds eight and masonry holds seventy-two, so changing your min
 routinely leaves stones over; they pop out as items rather than sitting in the pile unrendered,
 which would break the one thing this pile promises.
 
-Walls and masonry **bond to the pile next door**. Alternate courses lay a stone across the joint,
-the way a through stone ties a real wall together, so a run of them reads as one wall instead of
-separate blocks stood in a line. Each pile lays the stone crossing its own near joint and stops
-short at its far one, where the pile ahead reaches back over — so every joint gets exactly one
-bond stone rather than two fighting for the same space.
+### The masonry bond
+
+![The masonry bond](docs/masonry-bond.svg)
 
 Masonry stones are **laid with a joint between them**, never face to face. Two stones that touch
-share a face exactly and a course of them reads as one milled slab with lines scored on it, so a
-course takes the most stones that still leave daylight: three across by three deep, nine in all,
-where tiling the cube exactly took twelve. Three stones a course is what the joint costs, and the
-joint is the same width everywhere — inside the course, at each face, and across the seam into the
-pile next door — so a run of masonry reads as one mortared wall.
+share a face exactly, and a course of them reads as one milled slab with lines scored on it. So a
+course takes the most stones that still leave daylight — three an axis, nine in all, where tiling
+the cube exactly took twelve — all laid the same way round, a third of a block apart. The stone is
+5 x 4 pixels on the floor, so that one pitch leaves a 1/3-pixel joint across a course and a
+1 1/3-pixel joint through it.
 
-Courses also stagger **inside** a block, or the pile would read as columns. A course is two stones
-laid lengthways and one turned onto its 4-pixel side, and which end the turned stone sits at swaps
-every course, which puts the joints of one course a full pixel clear of the joints of the one
-below. The lengthways stone leading each bond course is also the one that carries across the seam,
-because a through stone crosses the joint on its long face.
+Every gap has **a stone above and below it**, which is what makes them worth packing: a gap with
+daylight at both ends is a hole through a block that claims to be solid. Getting there takes four
+courses, not two. A course's mortar is a cross-hatch, and however far you slide a second
+cross-hatch over the first, the x lines of one still cross the z lines of the other — so each
+course starts from a different corner of the lattice, and wherever one course is open, one of the
+other three is stone.
 
-Both ends are considered, so a lone wall or a single masonry block is **symmetric**: flush at both
-ends, with nothing hanging out into thin air, and it looks the same whichever way you turn it.
-Bonding moves stones rather than adding them, so a neighbour arriving or going never changes how
-many stones a pile holds.
+Masonry also **bonds to the pile next door**, without needing to know it is there. A course that
+starts on the block face centres its first stone on the boundary, half of it in the neighbour's
+block, and leaves exactly that much notch at its far face for the neighbour's own — and a solid
+pile is always drawn square, so the tooth always points the same way. A run of masonry courses
+straight through the boundary with no seam at any width; a pile on its own shows the teeth
+instead, which is what an unfinished wall end looks like anyway.
+
+Walls bond differently, because a wall is two leaves of loose stone rather than a dressed cube: its
+alternate courses lay a stone across the joint **only when there is a pile to tie into**, and each
+pile lays the stone crossing its own near joint and stops short at its far one, where the pile
+ahead reaches back over. Every joint gets exactly one bond stone rather than two fighting for the
+same space, and bonding moves stones rather than adding them, so a neighbour arriving or going
+never changes how many stones a pile holds.
 
 Every pile keeps **its own** layout and its own facing. Stack whatever you like on whatever you
 like — a masonry footing under a cairn, steps against the end of a wall — and restyling the one you
@@ -160,7 +168,8 @@ own bottom-centre too — which is precisely the pivot the block entity's render
 10.3 and 12.4 pixels.
 
 `tools/rockpile_geometry.py` does that conversion and generates the other ten layouts, writing
-`mod/assets/acervuslapidum/config/rockpile-layout.json`. It is seeded, so regenerating on an
+`mod/assets/acervuslapidum/config/rockpile-layout.json` — and `docs/masonry-bond.svg`, the drawing
+above, from the very slots it just wrote, so a diagram of the bond cannot quietly stop matching it. It is seeded, so regenerating on an
 unchanged install is a no-op diff — there is a test for that. Five of vanilla's cubes are drawn as
 re-proportioned boxes rather than rotated ones, and the tool recovers the rotation those
 dimensions imply before folding in the cube's own.
