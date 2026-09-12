@@ -58,6 +58,19 @@ def spun(s, yaw_deg):
     return {**s, "x": 0.5 + x, "z": 0.5 + z, "yawDeg": s["yawDeg"] + yaw_deg}
 
 
+def half_span_x(s):
+    """Half the width this slot's stone covers along X.
+
+    Masonry alternates straight and quarter-turned courses, so a course is either stone lengths
+    across or stone depths across. Measuring the pose rather than assuming the length is what lets
+    the gap and joint checks below read both kinds of course.
+    """
+    # The quarter turn is what matters here, not the degree or two of jitter a hand-laid course
+    # carries: a wall stone nudged 3 degrees is still a stone length across for joint purposes.
+    quarter = round(s["yawDeg"] / 90.0) % 2
+    return (geo.STONE_DEPTH if quarter else geo.STONE_LENGTH) / 2
+
+
 def overhang(s):
     """How far past the block edge this slot's stone reaches, in block units.
 
@@ -94,7 +107,7 @@ class TestCommittedConfig(unittest.TestCase):
 
     def test_loose_layouts_hold_vanillas_pile_density(self):
         """The layouts that are just stone tipped on the ground stay at vanilla's own density."""
-        for name in ("heap", "neat", "scattered"):
+        for name in ("heap", "neat"):
             with self.subTest(layout=name):
                 self.assertEqual(len(self.layouts[name]), geo.HEAP_CAPACITY)
 
@@ -123,6 +136,40 @@ class TestCommittedConfig(unittest.TestCase):
             for lower, upper in zip(starts, starts[1:]):
                 with self.subTest(layout=name):
                     self.assertNotAlmostEqual(lower, upper)
+
+    def test_masonry_breaks_its_joints_inside_a_lone_block(self):
+        """A pile on its own has to look like coursed masonry, not like twelve columns.
+
+        Bonding is about the seam with the pile next door; this is the other half — within one
+        block, alternating straight and quarter-turned courses puts the joints of each course a
+        good pixel away from the joints of the course below it. When every course ran the same
+        way the joints lined up perfectly all the way up, which is what the running bond exists
+        to avoid.
+        """
+        # One texture pixel at the game's 16px block scale: closer than this and the two joints
+        # read as one continuous seam.
+        clearance = 1.0 / 16 - 1e-9
+
+        def joints(course):
+            # A course is several rows deep, so each X position appears more than once; only the
+            # distinct ones are joints.
+            spans = sorted(
+                {
+                    (round(posed(s)["x"] - half_span_x(s), 5), round(posed(s)["x"] + half_span_x(s), 5))
+                    for s in course
+                }
+            )
+            return [(a + previous) / 2 for (previous, (a, _)) in zip(
+                (b for _, b in spans), spans[1:]
+            )]
+
+        courses = [course for _, course in sorted(courses_of(self.layouts["masonry"]).items())]
+        for height, (lower, upper) in enumerate(zip(courses, courses[1:])):
+            below, above = joints(lower), joints(upper)
+            self.assertTrue(below and above, "a course with no joints at all")
+            for a in above:
+                with self.subTest(course=height + 1, joint=a):
+                    self.assertGreaterEqual(min(abs(a - b) for b in below), clearance)
 
     def test_bonding_layouts_carry_a_stone_across_each_joint(self):
         """The stone that ties one pile to the next, at whichever ends have a pile to tie to."""
@@ -161,12 +208,14 @@ class TestCommittedConfig(unittest.TestCase):
         notched open — by 0.094 on a wall and 0.177 on masonry — while the near end sat flush.
         Turning the pile round swapped which end was which.
         """
-        half = geo.STONE_LENGTH / 2
         for name in ("masonry", "wall"):
             for height, course in courses_of(self.layouts[name]).items():
-                xs = [posed(s)["x"] for s in course]
-                west = min(xs) - half
-                east = 1.0 - (max(xs) + half)
+                spans = [
+                    (posed(s)["x"] - half_span_x(s), posed(s)["x"] + half_span_x(s))
+                    for s in course
+                ]
+                west = min(a for a, _ in spans)
+                east = 1.0 - max(b for _, b in spans)
                 with self.subTest(layout=name, height=height):
                     self.assertAlmostEqual(west, east, places=5)
 
@@ -178,7 +227,6 @@ class TestCommittedConfig(unittest.TestCase):
         below it, rather than every course stopping dead at the same place. The bond courses are
         the ones that cover it.
         """
-        half = geo.STONE_LENGTH / 2
         for name in ("masonry", "wall"):
             by_layer = {}
             for s in self.layouts[name]:
@@ -189,7 +237,10 @@ class TestCommittedConfig(unittest.TestCase):
                 # Tile this course at x and x+1, the way two piles side by side render it: the
                 # left one has a neighbour ahead, the right one has a neighbour behind.
                 spans = [
-                    (posed(s, bond)["x"] + offset - half, posed(s, bond)["x"] + offset + half)
+                    (
+                        posed(s, bond)["x"] + offset - half_span_x(s),
+                        posed(s, bond)["x"] + offset + half_span_x(s),
+                    )
                     for s in course
                     for offset, bond in ((0.0, BOND_AHEAD), (1.0, BOND_BEHIND))
                 ]
@@ -203,8 +254,6 @@ class TestCommittedConfig(unittest.TestCase):
 
     def test_a_course_has_no_hole_wide_enough_to_see_through(self):
         """Stones may not tile a block exactly, but the slivers left over have to stay slivers."""
-        half = geo.STONE_LENGTH / 2
-
         # Three stones of 0.3125 cover 0.9375 of a block, so 0.0625 of gap has to go somewhere.
         # Split evenly, that is 0.03125 a side — half a texture pixel at the game's 16px scale,
         # and the best a symmetric three-stone course can do. Anything wider is a real hole.
@@ -213,10 +262,12 @@ class TestCommittedConfig(unittest.TestCase):
         for name in ("masonry", "wall"):
             by_layer = {}
             for s in self.layouts[name]:
-                by_layer.setdefault(round(s["y"], 5), []).append(s["x"])
+                by_layer.setdefault(round(s["y"], 5), []).append(s)
 
-            for height, xs in by_layer.items():
-                spans = sorted((x - half, x + half) for x in xs)
+            for height, course in by_layer.items():
+                spans = sorted(
+                    (s["x"] - half_span_x(s), s["x"] + half_span_x(s)) for s in course
+                )
                 reach = spans[0][1]
                 for start_x, end_x in spans[1:]:
                     with self.subTest(layout=name, height=height):
@@ -230,8 +281,7 @@ class TestCommittedConfig(unittest.TestCase):
 
     def test_expected_layouts_are_present(self):
         expected = {
-            "heap", "neat", "wall", "scattered",
-            "masonry", "ring", "spiral", "steps", "balanced", "twincolumns", "arrow",
+            "heap", "neat", "wall", "masonry", "ring", "spiral", "steps", "balanced", "twincolumns", "arrow",
         }
         expected |= {f"cairn{i}" for i in range(geo.CAIRN_SEGMENTS)}
         self.assertEqual(set(self.layouts), expected)
@@ -418,11 +468,6 @@ class TestCommittedConfig(unittest.TestCase):
         slots = self.layouts["balanced"]
         self.assertEqual(len(slots), geo.LAYERS)
         self.assertEqual(len({round(s["y"], 5) for s in slots}), geo.LAYERS)
-
-    def test_scattered_is_flatter_and_wider_than_the_heap(self):
-        scattered, heap = self.layouts["scattered"], self.layouts["heap"]
-        self.assertLess(max(s["y"] for s in scattered), max(s["y"] for s in heap))
-
 
 class TestHeapMatchesVanilla(unittest.TestCase):
     """The heap is not authored — it is vanilla's own stone-pile shape, re-driven at 1:1."""

@@ -8,7 +8,11 @@ using Vintagestory.GameContent;
 namespace AcervusLapidum.Storage;
 
 /// <summary>
-/// Values are persisted in block entity and item attributes, so never renumber them.
+/// Values are persisted in block entity and item attributes, so never renumber them. A layout
+/// that is withdrawn leaves its number behind as a gap — <see cref="RockPileUtil.ClampLayoutMode"/>
+/// turns a saved pile wearing it back into a heap, and the pickers walk
+/// <see cref="RockPileLayoutModes.PickerModes"/> rather than counting from zero, so the gap costs
+/// nothing but keeps every other layout where existing worlds left it.
 /// </summary>
 public enum RockPileLayoutMode
 {
@@ -16,7 +20,8 @@ public enum RockPileLayoutMode
     Neat = 1,
     Cairn = 2,
     Wall = 3,
-    Scattered = 4,
+    // 4 was Scattered: a thin spread the heap already covered. Withdrawn, and the number
+    // with it, so every layout below keeps the value existing saves wrote.
     Masonry = 5,
     Ring = 6,
     Spiral = 7,
@@ -40,8 +45,8 @@ public static class RockPileUtil
 
     /// <summary>
     /// Vanilla's own loose-pile density: the top cube of <c>item/stone-pile</c> sits at 12.4px, so
-    /// 32 stones fill a block the way the game already fills one. Heap, neat and scattered hold
-    /// exactly this, so tipping stone on the ground behaves as it always did.
+    /// 32 stones fill a block the way the game already fills one. Heap and neat hold exactly
+    /// this, so tipping stone on the ground behaves as it always did.
     /// </summary>
     public const int HeapCapacity = 32;
 
@@ -316,9 +321,6 @@ public sealed class RockPileLayoutConfig
     [JsonProperty("arrow")]
     public RockPileSlotTransform[] Arrow { get; set; } = [];
 
-    [JsonProperty("scattered")]
-    public RockPileSlotTransform[] Scattered { get; set; } = [];
-
     /// <summary>Widest cairn course, for the segment sitting on the ground.</summary>
     [JsonProperty("cairn0")]
     public RockPileSlotTransform[] Cairn0 { get; set; } = [];
@@ -349,7 +351,6 @@ public sealed class RockPileLayoutConfig
         {
             RockPileLayoutMode.Neat => Neat,
             RockPileLayoutMode.Wall => Wall,
-            RockPileLayoutMode.Scattered => Scattered,
             RockPileLayoutMode.Masonry => Masonry,
             RockPileLayoutMode.Ring => Ring,
             RockPileLayoutMode.Spiral => Spiral,

@@ -89,7 +89,7 @@ public sealed class GuiDialogRockPileLayout : GuiDialog
     /// <summary>Marks the layout the pile is wearing, and describes it while nothing is hovered.</summary>
     private void ShowSelected()
     {
-        var selected = (int)(Pile?.LayoutMode ?? RockPileLayoutMode.Heap);
+        var selected = RockPileLayoutModes.IndexForMode(Pile?.LayoutMode ?? RockPileLayoutMode.Heap);
 
         SingleComposer.GetSkillItemGrid(GridKey).selectedIndex = selected;
         Describe(selected);
@@ -119,7 +119,7 @@ public sealed class GuiDialogRockPileLayout : GuiDialog
         // as it had.
         var capacity = index == RockPileLayoutModes.RotateIndex
             ? null
-            : Pile?.SlotCountFor(RockPileUtil.ClampLayoutMode(index));
+            : Pile?.SlotCountFor(RockPileLayoutModes.ModeForIndex(index));
 
         SingleComposer.GetDynamicText(CountKey).SetNewText(
             capacity is { } stones ? Lang.Get("acervuslapidum:rockpile-layout-capacity", stones) : "");

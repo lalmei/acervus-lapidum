@@ -58,7 +58,7 @@ decided:
 
 | Layout | Stones | |
 | --- | --- | --- |
-| Heap, neat course, scattered | 32 | vanilla's own loose-pile density |
+| Heap, neat course | 32 | vanilla's own loose-pile density |
 | Spiral | 32 | |
 | Wall | 64 | eight courses of eight — stacks, and bonds to its neighbours |
 | Cairn | 40 / 28 / 19 | footing, body, shoulder — see below |
@@ -67,7 +67,7 @@ decided:
 | Twin columns | 16 | |
 | Arrow | 28 | a waypoint marker; turn it to aim it |
 | Balanced stack | 8 | one stone a course |
-| **Masonry** | **96** | a whole cube, twelve to a course |
+| **Masonry** | **96** | a whole cube, twelve to a course, laid in a running bond |
 
 The cairn narrows as it climbs because a ring of `N` stones laid end to end has exactly one
 radius, `N × 0.3125 / 2π`. Choosing the count chooses the width, every ring closes with no gap to
@@ -86,6 +86,12 @@ the way a through stone ties a real wall together, so a run of them reads as one
 separate blocks stood in a line. Each pile lays the stone crossing its own near joint and stops
 short at its far one, where the pile ahead reaches back over — so every joint gets exactly one
 bond stone rather than two fighting for the same space.
+
+Masonry courses also stagger **inside** a block: a course lies lengthways, the one above it a
+quarter turn round, so the joints of one never land on the joints of the next. Both fit twelve
+stones — the stone is 5 x 4 pixels on the floor, so three lengths by four depths and four depths by
+three lengths each tile a course — and alternating them is a running bond in both directions
+instead of twelve stone columns standing on each other.
 
 Both ends are considered, so a lone wall or a single masonry block is **symmetric**: flush at both
 ends, with nothing hanging out into thin air, and it looks the same whichever way you turn it.

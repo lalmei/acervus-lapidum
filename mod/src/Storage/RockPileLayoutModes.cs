@@ -18,15 +18,41 @@ public static class RockPileLayoutModes
 {
     private const string CacheKey = "acervuslapidum-rockpile-layout-modes";
 
+    /// <summary>
+    /// The layouts a picker offers, in the order it offers them.
+    ///
+    /// A picker slot is a position in this list, not an enum value cast to an int. The two used to
+    /// be the same number, and that is what a withdrawn layout breaks: <c>RockPileLayoutMode</c>
+    /// keeps the numbers existing saves wrote, so it now has a gap in it, and counting slots from
+    /// zero past that gap would hand every layout after it the wrong icon and the wrong name.
+    ///
+    /// <c>Enum.GetValues</c> returns the members in value order, which is the order they are
+    /// declared and the order the icons below are built in.
+    /// </summary>
+    public static readonly RockPileLayoutMode[] PickerModes = Enum.GetValues<RockPileLayoutMode>();
+
     /// <summary>The picker index of the turn entry, which sits after every layout.</summary>
-    public static int RotateIndex => Enum.GetValues<RockPileLayoutMode>().Length;
+    public static int RotateIndex => PickerModes.Length;
+
+    /// <summary>The layout a picker slot stands for. Out-of-range slots fall back to a heap.</summary>
+    public static RockPileLayoutMode ModeForIndex(int index)
+    {
+        return index >= 0 && index < PickerModes.Length ? PickerModes[index] : RockPileLayoutMode.Heap;
+    }
+
+    /// <summary>Which slot a layout sits in, for marking the one a pile is already wearing.</summary>
+    public static int IndexForMode(RockPileLayoutMode mode)
+    {
+        var index = Array.IndexOf(PickerModes, mode);
+        return index < 0 ? 0 : index;
+    }
 
     /// <summary>Built once per client and shared by every rock type, since the icons are drawn.</summary>
     public static SkillItem[] GetOrCreate(ICoreClientAPI capi)
     {
         return ObjectCacheUtil.GetOrCreate(capi, CacheKey, () =>
         {
-            // Index must line up with RockPileLayoutMode, which the tool mode int maps straight onto.
+            // Order must line up with PickerModes, which is what turns a slot back into a layout.
             return new SkillItem[]
             {
                 new SkillItem
@@ -49,11 +75,6 @@ public static class RockPileLayoutModes
                     Code = new AssetLocation("acervuslapidum", "wall"),
                     Name = Lang.Get("acervuslapidum:rockpile-layout-wall")
                 }.WithIcon(capi, RockPileLayoutIcons.DrawWall),
-                new SkillItem
-                {
-                    Code = new AssetLocation("acervuslapidum", "scattered"),
-                    Name = Lang.Get("acervuslapidum:rockpile-layout-scattered")
-                }.WithIcon(capi, RockPileLayoutIcons.DrawScattered),
                 new SkillItem
                 {
                     Code = new AssetLocation("acervuslapidum", "masonry"),
@@ -147,7 +168,7 @@ public static class RockPileLayoutModes
             return true;
         }
 
-        var mode = RockPileUtil.ClampLayoutMode(index);
+        var mode = ModeForIndex(index);
 
         // Apply locally so the pile redraws on the same frame; the server confirms or bounces it.
         pile.SetLayoutMode(mode);

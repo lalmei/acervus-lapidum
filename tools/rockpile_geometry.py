@@ -41,8 +41,8 @@ STONE_DEPTH = STONE_DIMS_PX[2] * PX
 # Eight 2px layers fill a block exactly.
 LAYERS = 8
 
-# The loose-pile density vanilla itself uses: its 32-cube heap tops out at y = 14.4px. Heap, neat,
-# wall and scattered all hold this, so a pile you just tip on the ground behaves like vanilla's.
+# The loose-pile density vanilla itself uses: its 32-cube heap tops out at y = 14.4px. Heap and
+# neat both hold this, so a pile you just tip on the ground behaves like vanilla's.
 HEAP_CAPACITY = 32
 
 # The largest any layout gets, and so the inventory size. Masonry earns it: tiling a whole cube
@@ -355,55 +355,41 @@ def build_wall(rng):
     return slots
 
 
-def build_scattered(rng):
-    """A low, wide spread — a marker you notice from a distance, not a heap you built."""
-    slots = []
-    for layer, (count, radius) in enumerate(zip((13, 11, 8), (0.36, 0.26, 0.15))):
-        phase = rng.uniform(0, math.tau)
-        for i in range(count):
-            theta = phase + math.tau * i / count + rng.uniform(-0.2, 0.2)
-            r = radius * rng.uniform(0.55, 1.0)
-            slots.append(
-                slot(
-                    0.5 + r * math.cos(theta),
-                    layer * STONE_HEIGHT,
-                    0.5 + r * math.sin(theta),
-                    rng.uniform(-180.0, 180.0),
-                    rng.uniform(-6.0, 6.0),
-                    rng.uniform(-6.0, 6.0),
-                )
-            )
-    return slots
-
-
 def build_masonry(rng):
     """A whole cube of coursed stone — the layout that gives you a solid block back.
 
-    Twelve stones tile a layer either way round: three lengths across by four depths, or four
-    depths across by three lengths. Alternating the two every course is a running bond, so the
-    joints break exactly as they would in real coursed masonry, and it lands on twelve both ways.
+    Twelve stones tile a layer either way round, because the stone is 5 x 4 px on the floor: three
+    lengths across by four depths, or — turned a quarter — four depths across by three lengths.
+    Alternating the two every course is a running bond. No joint in one course lines up with a
+    joint in the course below it, so a finished pile reads as laid masonry rather than as twelve
+    stone columns standing on each other, which is what a single repeated course looked like.
+
+    The turned course is the one that does the staggering *inside* the block; the straight course
+    is the one that carries a bond stone across the joint with the pile next door, because
+    ``course_positions`` measures in stone lengths and only the straight course lies that way.
+    Alternating them means the block boundary is bridged every other course, which is all the
+    seam needs.
     """
     # No jitter anywhere in here. Every other layout gets a degree or two of slop to look laid by
     # hand, but this one has to fit its own cube exactly to be allowed to call itself solid, and a
     # dressed, coursed wall is square in any case.
-    #
-    # Every course runs the same way now. The old version turned alternate courses 90 degrees,
-    # which bonded a course to the one above it but left the vertical joint at each block boundary
-    # running unbroken from top to bottom. Bonding along the wall's length is what actually matters
-    # between blocks, so courses stagger along X instead and the back one carries a bond stone.
-    cols, rows = 3, 4
     slots = []
     for layer in range(LAYERS):
-        bonded_course = layer % 2 == 1
+        # Straight courses run the stone's 5px length along X and bond to the neighbouring pile;
+        # turned courses run its 4px depth along X, which tiles the block exactly, four across.
+        turned = layer % 2 == 1
+        cols, rows = (4, 3) if turned else (3, 4)
+        yaw = 90.0 if turned else 0.0
+
         for col in range(cols):
-            x_bond = bond_course(cols, col) if bonded_course else None
+            x_bond = None if turned else bond_course(cols, col)
             for row in range(rows):
                 slots.append(
                     slot(
                         x_bond[3] if x_bond else (col + 0.5) / cols,
                         layer * STONE_HEIGHT,
                         (row + 0.5) / rows,
-                        0.0,
+                        yaw,
                         x_bond=x_bond,
                     )
                 )
@@ -604,7 +590,6 @@ def build_layouts(game_path: Path):
         "heap": load_heap(game_path),
         "neat": build_neat(rng),
         "wall": build_wall(rng),
-        "scattered": build_scattered(rng),
         "masonry": build_masonry(rng),
         "ring": build_ring(rng),
         "spiral": build_spiral(rng),

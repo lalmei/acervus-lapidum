@@ -68,17 +68,6 @@ public static class RockPileLayoutIcons
         (0.330, 0.530, 0, Wide)
     ];
 
-    private static readonly (double dx, double y, double angle, double width)[] ScatteredStones =
-    [
-        (-0.360, 0.790, 5, Narrow),
-        (-0.130, 0.800, -4, Narrow),
-        (0.130, 0.795, 7, Narrow),
-        (0.365, 0.785, -6, Narrow),
-        (-0.235, 0.685, -3, Narrow),
-        (0.020, 0.690, 6, Narrow),
-        (0.255, 0.680, -5, Narrow)
-    ];
-
     /// <summary>Coursed stone filling the whole icon: the layout that hands back a solid block.</summary>
     private static readonly (double dx, double y, double angle, double width)[] MasonryStones =
     [
@@ -207,9 +196,6 @@ public static class RockPileLayoutIcons
 
     public static void DrawWall(Context cr, int x, int y, float w, float h, double[] rgba) =>
         Draw(cr, x, y, w, h, rgba, WallStones);
-
-    public static void DrawScattered(Context cr, int x, int y, float w, float h, double[] rgba) =>
-        Draw(cr, x, y, w, h, rgba, ScatteredStones);
 
     private static void Draw(
         Context cr,
