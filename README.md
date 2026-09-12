@@ -22,8 +22,9 @@ stone in the pile is one rock you can see.** Then it lets you do something with 
   and they line up into continuous drystone rather than a row of separate heaps.
 - **A solid block, if you want one.** Fill a pile in the masonry layout and you get real coursed
   stone: walkable, buildable, fences and torches take hold. It costs what it looks like it costs.
-- **Twelve layouts**, switched with **F** while looking at a pile, or from the tool-mode picker
-  with a stone in hand — which also turns the pile, 45° a click.
+- **Eleven layouts**, switched with **F** while looking at a pile — with a stone in hand or
+  without one, the same picker either way. It groups them into rows by what kind of pile you are
+  after (loose stone, waymarks, masonry, ornament), and its last row turns the pile, 45° a click.
 - **Mix your rock however you like.** A granite dropped into a basalt pile stores as granite,
   renders as granite and comes back as granite. Nothing insists a pile be all one stone.
 - **Your old piles are left exactly as they are.** Vanilla stone piles keep rendering and keep
