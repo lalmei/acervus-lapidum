@@ -246,6 +246,28 @@ def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0, x_bond=None):
     return record
 
 
+def slot_bounds_y(s):
+    """How low and how high the stone in this slot actually reaches, for any pose.
+
+    The slot's ``y`` is the stone's bottom only while it is laid flat. Roll or pitch it and the
+    pivot stays at the stone's own bottom-centre while the box swings about it — a stone rolled a
+    quarter turn stands its 5px axis vertically and centres it on the pivot, so half of it ends up
+    below the slot's y. Reading ``y`` as the bottom is what would let an arch's springing stones
+    sink into the ground unnoticed.
+
+    The C# side needs the same number for its selection box and computes it the same way; see
+    ``RockPileUtil.SlotTopHeight``.
+    """
+    m = mul(rot_y(s["yawDeg"]), mul(rot_x(s["pitchDeg"]), rot_z(s["rollDeg"])))
+    reach = [
+        apply(m, (dx, dy, dz))[1]
+        for dx in (-STONE_LENGTH / 2, STONE_LENGTH / 2)
+        for dy in (0.0, STONE_HEIGHT)
+        for dz in (-STONE_DEPTH / 2, STONE_DEPTH / 2)
+    ]
+    return s["y"] + min(reach), s["y"] + max(reach)
+
+
 def course_lattice(start, crossing=True):
     """Where a coursed layout puts its stones along one axis, for a course with this start.
 
