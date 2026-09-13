@@ -505,13 +505,20 @@ class TestCommittedConfig(unittest.TestCase):
                     self.assertLessEqual(worst, budget)
 
     def test_no_slot_reaches_into_the_block_above(self):
-        """This is the one that has to be exact: a cairn stacks segments, so a stone crossing
-        y = 1 would collide with the segment above it."""
+        """A cairn stacks segments, so a stone crossing y = 1 would collide with the one above it.
+
+        Checked twice over. The pivot check is the exact one and stays exact. The second reads the
+        stone's true top under its own pose, which is the only one that can see an on-edge stone
+        reaching past its pivot — the arch's springing voussoirs stand 5px tall from a pivot the
+        flat-stone arithmetic thinks is 2px. Its budget is what the shipped layouts already spend
+        on tilt jitter: the cairn's inward lean reaches 16.34px.
+        """
         for name, slots in self.layouts.items():
             for i, s in enumerate(slots):
                 with self.subTest(layout=name, slot=i):
                     self.assertGreaterEqual(s["y"], 0.0)
                     self.assertLessEqual(s["y"] + geo.STONE_HEIGHT, 1.0)
+                    self.assertLessEqual(geo.slot_bounds_y(s)[1] * 16, 16.35)
 
     def test_slots_are_ordered_bottom_up(self):
         """Piles fill in slot order, so a pile must never grow a stone above an empty gap."""
