@@ -178,13 +178,17 @@ public class BlockRockPile : Block
         if (world.BlockAccessor.GetBlockEntity(selection.Position) is BlockEntityRockPile niche
             && niche.HasNiche)
         {
+            var filled = niche.NicheStack is not null;
             help.Add(new WorldInteraction
             {
-                ActionLangCode = niche.NicheStack is null
-                    ? "acervuslapidum:blockhelp-rockpile-niche-put"
-                    : "acervuslapidum:blockhelp-rockpile-niche-take",
+                ActionLangCode = filled
+                    ? "acervuslapidum:blockhelp-rockpile-niche-take"
+                    : "acervuslapidum:blockhelp-rockpile-niche-put",
                 MouseButton = EnumMouseButton.Right,
-                HotKeyCodes = ["shift"]
+
+                // Putting is a plain click; sneak would place what you are holding instead of
+                // reaching the pile. Taking needs the empty hand that sneak can safely carry.
+                HotKeyCodes = filled ? ["shift"] : null
             });
         }
 

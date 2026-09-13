@@ -441,13 +441,27 @@ public class BlockEntityRockPile : BlockEntityDisplay
         {
             ok = TryPut(byPlayer);
         }
-        else if (sneaking && HasNiche && !adding && !RockPileUtil.IsPileableStone(hotbar.Itemstack))
+        else if (HasNiche && !adding && !hotbar.Empty && NicheSlot.Empty
+                 && !RockPileUtil.IsPileableStone(hotbar.Itemstack))
         {
-            // Sneak + right-click is the niche's own gesture, and it is free: plain right-click
-            // takes a stone, sneak + Ctrl adds one, and sneak on its own is only spoken for while a
-            // stone is in hand — that is the gesture that starts knapping one. So the niche answers
-            // it for anything that is not a stone, and for an empty hand, which takes back.
-            ok = hotbar.Empty ? TakeFromNiche(byPlayer) : PutInNiche(byPlayer);
+            // Plain right-click, deliberately not sneak + right-click.
+            //
+            // Sneak + right-click is the gesture the game itself uses to step over a block's
+            // interaction and place what you are holding instead, which is how you build against a
+            // chest rather than opening it. So a torch — a block carried as an item — was being
+            // placed in the world and never reached here, while a stick, which cannot be placed,
+            // fell through and worked. A niche that takes sticks but not torches.
+            //
+            // Without sneak the block's interaction wins over placement, so this is the gesture
+            // that reliably arrives. It costs taking a stone while holding something that is not a
+            // stone, on the one layout that has a pocket — and only while that pocket is empty.
+            ok = PutInNiche(byPlayer);
+        }
+        else if (sneaking && HasNiche && !adding && hotbar.Empty)
+        {
+            // An empty hand has nothing to place, so sneak still reaches us — and it keeps taking
+            // the niche's contents clear of the plain click that takes a stone.
+            ok = TakeFromNiche(byPlayer);
         }
         else if (!sneaking)
         {
