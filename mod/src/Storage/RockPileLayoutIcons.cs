@@ -6,8 +6,8 @@ namespace AcervusLapidum.Storage;
 /// <summary>
 /// Tool-mode icons for the layout picker, each a side-on sketch of the pile it builds: a rough
 /// mound for Heap, squared courses for Neat, a narrowing tower for Cairn, a long low run for
-/// Wall, and — for Arrow, the one layout read from above rather than from the side — a chevron
-/// and shaft. Stones carry their own width so a wide flat spread reads differently from a tall
+/// Wall, and — for Arrow, the one layout read from above
+/// rather than from the side — a chevron and shaft. Stones carry their own width so a wide flat spread reads differently from a tall
 /// narrow stack at icon size.
 ///
 /// The turn entry is the exception: it is the one thing in the picker that is not a pile, so it
@@ -42,6 +42,26 @@ public static class RockPileLayoutIcons
         (0.170, 0.600, 0, Wide),
         (-0.170, 0.480, 0, Wide),
         (0.170, 0.480, 0, Wide)
+    ];
+
+    /// <summary>
+    /// The cairn with its middle courses held apart and a stone laid across them. The gap is the
+    /// whole sign — a cone with a doorway in it — so the courses either side of the pocket are
+    /// pushed out wider than the plain cairn's, to keep the opening legible at 48 pixels.
+    /// </summary>
+    private static readonly (double dx, double y, double angle, double width)[] NicheCairnStones =
+    [
+        (-0.310, 0.870, 3, Wide),
+        (0.000, 0.875, 0, Wide),
+        (0.310, 0.870, -3, Wide),
+        (-0.255, 0.750, -3, Narrow),
+        (0.255, 0.750, 3, Narrow),
+        (-0.255, 0.640, -3, Narrow),
+        (0.255, 0.640, 3, Narrow),
+        (0.000, 0.545, 0, Wide),
+        (-0.130, 0.440, 5, Narrow),
+        (0.130, 0.440, -5, Narrow),
+        (0.000, 0.330, 0, 0.16)
     ];
 
     /// <summary>Courses drawing in as they rise, so the silhouette is the cone itself.</summary>
@@ -243,6 +263,9 @@ public static class RockPileLayoutIcons
 
     public static void DrawCairn(Context cr, int x, int y, float w, float h, double[] rgba) =>
         Draw(cr, x, y, w, h, rgba, CairnStones);
+
+    public static void DrawNicheCairn(Context cr, int x, int y, float w, float h, double[] rgba) =>
+        Draw(cr, x, y, w, h, rgba, NicheCairnStones);
 
     public static void DrawWall(Context cr, int x, int y, float w, float h, double[] rgba) =>
         Draw(cr, x, y, w, h, rgba, WallStones);

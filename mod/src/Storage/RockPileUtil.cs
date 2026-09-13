@@ -28,7 +28,10 @@ public enum RockPileLayoutMode
     Steps = 8,
     Balanced = 9,
     TwinColumns = 10,
-    Arrow = 11
+    Arrow = 11,
+    // 12 was Arch: three voussoirs and a keystone, which at sixteen pixels read as a lump of
+    // stone with a notch in it rather than as an arch. Withdrawn, and the number with it.
+    NicheCairn = 13
 }
 
 public static class RockPileUtil
@@ -334,6 +337,10 @@ public sealed class RockPileLayoutConfig
     [JsonProperty("arrow")]
     public RockPileSlotTransform[] Arrow { get; set; } = [];
 
+    /// <summary>The cairn footing with a pocket cut into one face, for something to sit in.</summary>
+    [JsonProperty("nichecairn")]
+    public RockPileSlotTransform[] NicheCairn { get; set; } = [];
+
     /// <summary>Widest cairn course, for the segment sitting on the ground.</summary>
     [JsonProperty("cairn0")]
     public RockPileSlotTransform[] Cairn0 { get; set; } = [];
@@ -371,6 +378,10 @@ public sealed class RockPileLayoutConfig
             RockPileLayoutMode.Balanced => Balanced,
             RockPileLayoutMode.TwinColumns => TwinColumns,
             RockPileLayoutMode.Arrow => Arrow,
+
+            // One profile, not the cairn's three: a pocket belongs at the foot where you can reach
+            // into it, and a segment stacked above this one is an ordinary cairn course.
+            RockPileLayoutMode.NicheCairn => NicheCairn,
             RockPileLayoutMode.Cairn => Math.Clamp(segment, 0, RockPileUtil.CairnSegmentProfiles - 1) switch
             {
                 0 => Cairn0,

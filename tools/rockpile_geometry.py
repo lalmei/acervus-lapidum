@@ -246,6 +246,81 @@ def slot(x, y, z, yaw=0.0, pitch=0.0, roll=0.0, x_bond=None):
     return record
 
 
+def slot_frame(s):
+    """A slot's stone as an oriented box: centre, unit axes, half extents.
+
+    The box is not centred on the slot. A slot's pose puts the stone's bottom-centre on the
+    pivot — local y runs 0 to the stone's height — so the centre is half a stone height up its own
+    rotated y axis.
+    """
+    m = mul(rot_y(s["yawDeg"]), mul(rot_x(s["pitchDeg"]), rot_z(s["rollDeg"])))
+    axes = tuple(tuple(m[r][c] for r in range(3)) for c in range(3))
+    offset = apply(m, (0.0, STONE_HEIGHT / 2, 0.0))
+    centre = (s["x"] + offset[0], s["y"] + offset[1], s["z"] + offset[2])
+    return centre, axes, (STONE_LENGTH / 2, STONE_HEIGHT / 2, STONE_DEPTH / 2)
+
+
+def _boxes_overlap(ca, ua, ea, cb, ub, eb):
+    """Separating-axis test for two oriented boxes: fifteen axes, and a gap on any one parts them."""
+    d = tuple(cb[i] - ca[i] for i in range(3))
+
+    axes = list(ua) + list(ub)
+    for x in ua:
+        for y in ub:
+            cross = (x[1] * y[2] - x[2] * y[1],
+                     x[2] * y[0] - x[0] * y[2],
+                     x[0] * y[1] - x[1] * y[0])
+            if sum(v * v for v in cross) > 1e-12:
+                axes.append(cross)
+
+    for axis in axes:
+        norm = math.sqrt(sum(v * v for v in axis))
+        n = tuple(v / norm for v in axis)
+        reach_a = sum(ea[i] * abs(sum(ua[i][k] * n[k] for k in range(3))) for i in range(3))
+        reach_b = sum(eb[i] * abs(sum(ub[i][k] * n[k] for k in range(3))) for i in range(3))
+        if abs(sum(d[k] * n[k] for k in range(3))) > reach_a + reach_b:
+            return False
+    return True
+
+
+IDENTITY_AXES = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+
+
+def stones_overlap(a, b, tolerance=0.0):
+    """Whether two slots' stones cut into each other.
+
+    Axis-aligned spacing checks cannot answer this once a layout stops being axis-aligned. The arch
+    radiates its voussoirs, so "are these two a stone's width apart in x" says nothing about whether
+    they interpenetrate — and the first draft of that ring cleared every outer corner while driving
+    the inner ones through each other.
+
+    ``tolerance`` shrinks both stones before the test, so it is how deep an overlap has to be before
+    it counts. Some is always wanted: stacked courses share a face exactly, and at zero tolerance
+    exact contact reads as overlap. A negative value grows them instead, which asks the stricter
+    question of whether there is a gap of that width between them.
+    """
+    ca, ua, ea = slot_frame(a)
+    cb, ub, eb = slot_frame(b)
+    return _boxes_overlap(
+        ca, ua, tuple(e - tolerance / 2 for e in ea),
+        cb, ub, tuple(e - tolerance / 2 for e in eb),
+    )
+
+
+def region_holds_stone(slots, lo, hi):
+    """Whether any stone reaches into this axis-aligned region of the block.
+
+    How to ask what a pocket can hold without guessing from radii: name the box you want to stand
+    something in and see whether the stonework is in the way.
+    """
+    centre = tuple((lo[i] + hi[i]) / 2 for i in range(3))
+    half = tuple((hi[i] - lo[i]) / 2 for i in range(3))
+    return any(
+        _boxes_overlap(*slot_frame(s), centre, IDENTITY_AXES, half)
+        for s in slots
+    )
+
+
 def slot_bounds_y(s):
     """How low and how high the stone in this slot actually reaches, for any pose.
 
@@ -668,6 +743,70 @@ def build_arrow(rng):
     return slots
 
 
+# --- the cairn with a pocket in it ----------------------------------------------------------------
+
+# The pocket faces +Z, so the pile's own turn aims it wherever you want it.
+NICHE_BEARING = 90.0
+# Sized to read as somewhere you would stand a torch. At 52 degrees over three courses the pocket
+# came out roughly 8px by 6px — a pocket, but visibly smaller than the thing it is for.
+#
+# Cutting courses 1 to 5 opens a window from 2px to 12px, which is a torch's own height, and leaves
+# course 0 under it as the shelf the torch stands on. It is not a 2px-clear shaft: the cairn's
+# stones tilt inward and the rings either side of the opening intrude, so a torch set in here has
+# its stick among the stones rather than in clear air. That is what a socket in drystone looks like.
+#
+# 70 degrees rather than 62: the ring phase is random per pile, and both angles cut the same stones
+# at this radius, so the wider one keeps the cut on the same side of that boundary whatever the
+# phase lands on.
+NICHE_HALF_ANGLE = 70.0
+NICHE_LAYERS = (1, 2, 3, 4, 5)
+
+
+def build_niche_cairn(rng):
+    """The cairn footing with a pocket cut into one face, and a stone bridging its mouth.
+
+    The rings, their radii and their half-stone phase advance are ``build_cairn``'s own — this is
+    that layout with an opening in it, not a new shape, so a pocket cairn in a row of plain ones
+    still reads as the same kind of pile. Stones whose bearing falls inside the pocket are simply
+    not laid, and the course above carries a stone across its mouth: without that the pocket reads
+    as a hole where somebody forgot a rock rather than as something built on purpose.
+
+    One profile rather than the cairn's three. A pocket belongs at the foot, where you can reach
+    into it; a segment stacked above this one is an ordinary cairn course.
+    """
+    slots = []
+    phase = rng.uniform(0, math.tau)
+    widest = ring_radius(max(CAIRN_PROFILES[0]))
+
+    for layer, (count, radius) in enumerate(cairn_rings(0)):
+        if layer > 0:
+            phase += math.pi / count
+        for i in range(count):
+            theta = phase + math.tau * i / count
+            bearing = math.degrees(theta) % 360.0
+            # Shortest way round, so a pocket spanning 0 degrees is not cut in half.
+            gap = abs((bearing - NICHE_BEARING + 180.0) % 360.0 - 180.0)
+            if layer in NICHE_LAYERS and gap < NICHE_HALF_ANGLE:
+                continue
+            slots.append(slot(
+                0.5 + radius * math.cos(theta),
+                layer * STONE_HEIGHT,
+                0.5 + radius * math.sin(theta),
+                -math.degrees(theta) + rng.uniform(-8.0, 8.0),
+                rng.uniform(-4.0, 4.0),
+                -7.0 * (radius / widest) + rng.uniform(-3.0, 3.0),
+            ))
+
+    # The stone across the mouth, laid flat on the course above the opening.
+    top = max(NICHE_LAYERS) + 1
+    radius = cairn_rings(0)[top][1]
+    for dx in (-STONE_LENGTH / 2 + 0.01, STONE_LENGTH / 2 - 0.01):
+        slots.append(slot(0.5 + dx, top * STONE_HEIGHT, 0.5 + radius * 0.92,
+                          rng.uniform(-3.0, 3.0), 0, rng.uniform(-2.0, 2.0)))
+
+    return slots
+
+
 def build_layouts(game_path: Path):
     rng = random.Random(SEED)
     layouts = {
@@ -691,6 +830,7 @@ def build_layouts(game_path: Path):
     # anywhere in the middle re-rolls the jitter of every layout built after it — a thousand-line
     # diff for a change that added one arrow. Appending keeps the diff to the layout you added.
     layouts["arrow"] = build_arrow(rng)
+    layouts["nichecairn"] = build_niche_cairn(rng)
 
     # Piles fill in slot order, so every layout has to be laid out bottom-up or a stone would
     # appear above a gap. Sorting is stable, which keeps each course in the order its builder
