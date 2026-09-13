@@ -55,7 +55,8 @@ public static class RockPileLayoutModes
         ("loose", [RockPileLayoutMode.Heap, RockPileLayoutMode.Neat]),
 
         // Piles you build to be read from a distance — which way to go, and that someone came by.
-        ("waymark", [RockPileLayoutMode.Cairn, RockPileLayoutMode.Arrow, RockPileLayoutMode.TwinColumns]),
+        ("waymark", [RockPileLayoutMode.Cairn, RockPileLayoutMode.NicheCairn, RockPileLayoutMode.Arrow,
+                     RockPileLayoutMode.TwinColumns]),
 
         // Stone laid as building: a course, a filled block, a flight to climb.
         ("masonry", [RockPileLayoutMode.Wall, RockPileLayoutMode.Masonry, RockPileLayoutMode.Steps]),
@@ -157,6 +158,11 @@ public static class RockPileLayoutModes
                     Code = new AssetLocation("acervuslapidum", "arrow"),
                     Name = Lang.Get("acervuslapidum:rockpile-layout-arrow")
                 }.WithIcon(capi, RockPileLayoutIcons.DrawArrow),
+                new SkillItem
+                {
+                    Code = new AssetLocation("acervuslapidum", "nichecairn"),
+                    Name = Lang.Get("acervuslapidum:rockpile-layout-nichecairn")
+                }.WithIcon(capi, RockPileLayoutIcons.DrawNicheCairn),
 
                 // Last entry, past every layout: picking it turns the pile 45 degrees instead of
                 // restyling it. RotateIndex is what tells the two apart in Apply.

@@ -391,10 +391,65 @@ class TestCommittedConfig(unittest.TestCase):
 
     def test_expected_layouts_are_present(self):
         expected = {
-            "heap", "neat", "wall", "masonry", "ring", "spiral", "steps", "balanced", "twincolumns", "arrow",
+            "heap", "neat", "wall", "masonry", "ring", "spiral", "steps", "balanced", "twincolumns",
+            "arrow", "nichecairn",
         }
         expected |= {f"cairn{i}" for i in range(geo.CAIRN_SEGMENTS)}
         self.assertEqual(set(self.layouts), expected)
+
+    def test_the_niche_is_a_window_with_a_shelf_under_it(self):
+        """The pocket has to read as somewhere you would stand a torch.
+
+        Two things make it read that way rather than as a missing stone: an opening about as tall as
+        the thing it is for, and a course left in underneath it to stand that thing on. Both are
+        measured off the cut courses, which is what decides them.
+        """
+        opening_from = min(geo.NICHE_LAYERS) * geo.STONE_HEIGHT
+        opening_to = (max(geo.NICHE_LAYERS) + 1) * geo.STONE_HEIGHT
+
+        # A torch is about 10px tall, and the window is sized to it.
+        self.assertGreaterEqual((opening_to - opening_from) * 16, 9.5)
+
+        # Course zero is not cut, so there is stone beneath the opening to stand something on.
+        self.assertNotIn(0, geo.NICHE_LAYERS)
+        px = 1 / 16
+        self.assertTrue(
+            geo.region_holds_stone(
+                self.layouts["nichecairn"],
+                (0.5 - 1.5 * px, 0.0, 0.5 + px),
+                (0.5 + 1.5 * px, opening_from - 0.006, 0.5 + 5 * px),
+            ),
+            "nothing under the opening to stand anything on",
+        )
+
+    def test_the_niche_is_the_cairn_with_stones_left_out(self):
+        """It is the cairn with an opening, not a second cone.
+
+        Not the same coordinates — it draws its own ring phase, as every pile does, so a row of them
+        does not line up like printing. The same construction: a course for every course, each on
+        the radius the cairn's own profile gives it, and a count that is the cairn's count less
+        whatever the pocket cuts out of it. That is what makes a pocket cairn among plain ones read
+        as the same kind of pile.
+        """
+        niche = courses_of(self.layouts["nichecairn"])
+        rings = geo.cairn_rings(0)
+        self.assertEqual(len(niche), len(rings))
+
+        for layer, (height, course) in enumerate(sorted(niche.items())):
+            count, radius = rings[layer]
+            with self.subTest(course=layer):
+                # Every stone on that course sits on the cairn's own radius for it. The two bridging
+                # stones over the mouth are the exception and are pulled in slightly.
+                on_ring = [
+                    s for s in course
+                    if abs(math.hypot(s["x"] - 0.5, s["z"] - 0.5) - radius) < 1e-3
+                ]
+                self.assertGreaterEqual(len(on_ring), len(course) - 2)
+
+                if layer in geo.NICHE_LAYERS:
+                    self.assertLess(len(on_ring), count, "the pocket cut nothing out of this course")
+                else:
+                    self.assertEqual(len(on_ring), count, "an uncut course lost a stone")
 
     def test_ring_is_hollow(self):
         """A hearth ring you can lay a fire in. If the middle fills up it is just a small pile."""
@@ -507,18 +562,25 @@ class TestCommittedConfig(unittest.TestCase):
     def test_no_slot_reaches_into_the_block_above(self):
         """A cairn stacks segments, so a stone crossing y = 1 would collide with the one above it.
 
-        Checked twice over. The pivot check is the exact one and stays exact. The second reads the
-        stone's true top under its own pose, which is the only one that can see an on-edge stone
-        reaching past its pivot — the arch's springing voussoirs stand 5px tall from a pivot the
-        flat-stone arithmetic thinks is 2px. Its budget is what the shipped layouts already spend
-        on tilt jitter: the cairn's inward lean reaches 16.34px.
+        Checked twice over. The pivot check is the exact one: no slot may be placed so high that a
+        flat stone in it would cross the ceiling. The second reads the stone's true top under its own
+        pose, which is the only one that can see a tilted or on-edge stone reaching past its pivot.
+
+        That second budget is derived from the stone's own tilt rather than measured off the layouts,
+        because a measured constant is a trap: it was 16.35px, tuned to what the cairn happened to
+        reach, and withdrawing an unrelated layout re-rolled the shared rng and pushed the same
+        course to 16.354px. A stone may overhang by what its tilt lifts its corner, and no more.
         """
         for name, slots in self.layouts.items():
             for i, s in enumerate(slots):
                 with self.subTest(layout=name, slot=i):
                     self.assertGreaterEqual(s["y"], 0.0)
                     self.assertLessEqual(s["y"] + geo.STONE_HEIGHT, 1.0)
-                    self.assertLessEqual(geo.slot_bounds_y(s)[1] * 16, 16.35)
+
+                    overhang = geo.slot_bounds_y(s)[1] - (s["y"] + geo.STONE_HEIGHT)
+                    tilt = math.radians(max(abs(s["pitchDeg"]), abs(s["rollDeg"])))
+                    allowed = (geo.STONE_LENGTH + geo.STONE_DEPTH) / 2 * math.sin(tilt)
+                    self.assertLessEqual(overhang, allowed + 1e-9)
 
     def test_slots_are_ordered_bottom_up(self):
         """Piles fill in slot order, so a pile must never grow a stone above an empty gap."""
@@ -528,9 +590,22 @@ class TestCommittedConfig(unittest.TestCase):
                 self.assertEqual(heights, sorted(heights))
 
     def test_first_stone_sits_on_the_ground(self):
+        """Measured from the stone's own lowest corner, not from its slot y.
+
+        The two are the same thing only while a stone is laid flat. The arch is the first layout
+        that rolls one on edge, and a rolled stone's pivot sits at the middle of its standing
+        height — so its slot y is half a stone length while the stone itself rests exactly on the
+        ground. Checking the pivot would have called that floating and passed a genuinely floating
+        on-edge stone somewhere else.
+
+        Downward tolerance covers the tilt jitter every layout carries: vanilla's own heap dips
+        0.69px at its deepest. Upward there is almost none, because floating is the failure.
+        """
         for name, slots in self.layouts.items():
+            bottom, _ = geo.slot_bounds_y(slots[0])
             with self.subTest(layout=name):
-                self.assertAlmostEqual(slots[0]["y"], 0.0)
+                self.assertLessEqual(bottom * 16, 0.05, "the first stone floats")
+                self.assertGreaterEqual(bottom * 16, -0.75, "the first stone is buried")
 
     def test_cairn_never_flares_going_up_the_column(self):
         """A cairn is one cone, not three stacked drums. Each segment must pick up at the radius
