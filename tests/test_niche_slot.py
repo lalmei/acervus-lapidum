@@ -158,10 +158,25 @@ class TestTheNicheIsSeenAndLit(unittest.TestCase):
         self.block = BLOCK.read_text()
 
     def test_the_item_is_drawn_in_the_pocket_and_turns_with_the_pile(self):
-        body = body_of(self.entity, "private static float[] NicheMatrix(")
+        body = body_of(self.entity, "private float[] NicheMatrix(")
         self.assertIn("RotateYDeg(yaw)", body)
-        self.assertIn("Scale(NicheScale", body)
         self.assertIn("matrices[RockPileUtil.NicheSlotIndex] = NicheMatrix(yaw);", self.entity)
+
+    def test_the_niche_corrects_for_the_item_s_own_ground_transform(self):
+        """Most items declare none and some declare one, so without this they sit inconsistently.
+
+        Vanilla's book steps 0.12 blocks sideways and rolls 90 degrees; its shattered clay scales to
+        0.38 and sinks 0.3 down. Both are authored for lying in a ground-storage pile, and both leave
+        a pocket that is ten pixels across. Scale is divided out and translation cancelled; rotation
+        is kept, because that is the part that makes an item stand up on a surface.
+        """
+        body = body_of(self.entity, "private float[] NicheMatrix(")
+        self.assertIn("Attributes?[AttributeTransformCode]", body)
+        self.assertIn("NicheScale / (ownScale", body)
+        self.assertIn("Translate(-undo.X, -undo.Y, -undo.Z)", body)
+
+        # Rotation is deliberately left alone; undoing it would lay the book on its face.
+        self.assertNotIn("own?.Rotation", body)
 
     def test_the_pile_emits_what_the_niche_holds(self):
         body = body_of(self.block, "public override byte[] GetLightHsv(")

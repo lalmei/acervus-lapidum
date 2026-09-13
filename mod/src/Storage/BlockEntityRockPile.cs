@@ -796,18 +796,37 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// written for the unturned pile and turned with everything else — point the cairn wherever you
     /// like and the thing in the pocket goes with it.
     ///
-    /// Scaled down, because an item meshes at the size it would be as a block and a full-size torch
-    /// in a 10px window is a torch wearing a cairn. Standing on the shelf that course zero leaves,
-    /// far enough forward to be seen through the opening and far enough back to be inside it.
+    /// Two corrections for the item's own ground-storage transform, which the pile resolves through
+    /// <see cref="AttributeTransformCode"/> and which is authored for a very different container.
+    /// Some items declare one and most do not — 113 of vanilla's 845 — so without these a torch and
+    /// a book sit at different sizes in different places.
+    ///
+    /// Its scale is divided out, so everything ends up the size the niche wants rather than the
+    /// size a ground pile wanted. Its translation is cancelled, because a pocket is ten pixels
+    /// across and there is no room to be shoved out of it — vanilla's book steps 0.12 sideways and
+    /// its shattered clay sinks 0.3 down, both of which leave a niche entirely.
+    ///
+    /// Its rotation is deliberately kept. That is the part an item's author used to make the thing
+    /// sit upright on a surface, and a niche is a surface: the book's roll of 90 degrees is what
+    /// stands it on its spine rather than laying it face down.
     /// </summary>
-    private static float[] NicheMatrix(float yaw)
+    private float[] NicheMatrix(float yaw)
     {
+        var own = NicheSlot.Itemstack?.Collectible?.Attributes?[AttributeTransformCode]
+            ?.AsObject<ModelTransform>();
+
+        var ownScale = own?.ScaleXYZ.X ?? 1f;
+        var scale = NicheScale / (ownScale > 0.01f ? ownScale : 1f);
+
+        var undo = own?.Translation ?? new Vec3f();
+
         return new Matrixf()
             .Translate(0.5f, 0f, 0.5f)
             .RotateYDeg(yaw)
             .Translate(-0.5f, 0f, -0.5f)
             .Translate(0.5f, NicheShelfHeight, NicheDepth)
-            .Scale(NicheScale, NicheScale, NicheScale)
+            .Scale(scale, scale, scale)
+            .Translate(-undo.X, -undo.Y, -undo.Z)
             .Translate(-0.5f, 0f, -0.5f)
             .Values;
     }
