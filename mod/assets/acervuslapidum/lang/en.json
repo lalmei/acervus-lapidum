@@ -35,7 +35,7 @@
   "blockinfo-rockpile-layout": "Laid as: {0}",
   "blockinfo-rockpile-full": "Full — place a stone on top to start the next course",
   "blockinfo-rockpile-solid": "Solid — you can build on this",
-  "blockinfo-rockpile-niche-empty": "Empty niche — sneak + right-click to stand something in it",
+  "blockinfo-rockpile-niche-empty": "Empty niche — right-click with something in hand to stand it in there",
   "blockinfo-rockpile-niche": "In the niche: {0}",
 
   "blockhelp-rockpile-add": "Add a stone (hold to keep adding)",
@@ -43,7 +43,7 @@
   "blockhelp-rockpile-takebulk": "Take several",
   "blockhelp-rockpile-layout": "Choose the layout, or turn the pile",
   "blockhelp-rockpile-niche-put": "Stand something in the niche",
-  "blockhelp-rockpile-niche-take": "Take what is in the niche",
+  "blockhelp-rockpile-niche-take": "Take what is in the niche (empty hand)",
 
   "heldhelp-rockpile-place": "Place a stone (hold to keep placing)",
   "heldhelp-rockpile-layout": "Choose the layout, or turn the pile"

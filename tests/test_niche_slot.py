@@ -80,27 +80,51 @@ class TestTheNicheSlotIsReserved(unittest.TestCase):
 
 
 class TestTheNicheGesture(unittest.TestCase):
-    """Sneak + right-click, and only on a pile that has a pocket.
+    """Putting is a plain right-click. Sneak would place the torch instead of reaching the pile.
 
-    It has to thread between three gestures that are already taken: plain right-click takes a stone,
-    sneak + Ctrl adds one, and sneak alone with a stone in hand is how knapping starts — which is the
-    reason adding needs Ctrl at all. So the niche answers sneak + right-click for anything that is
-    not a stone, and for an empty hand, which takes back.
+    This is the one that has to be written down, because the obvious gesture is the wrong one.
+    Sneak + right-click is what the game itself uses to step over a block's interaction and place
+    what you are holding — it is how you build against a chest rather than opening it. A torch is a
+    block carried as an item, so sneak + right-click placed it in the world and never arrived here,
+    while a stick, which cannot be placed, fell through and worked. The niche took sticks but not
+    torches, which is exactly backwards from what it is for.
+
+    Without sneak, the block's interaction wins over placement, so a plain click always arrives.
+    Taking still uses sneak, because an empty hand has nothing to place.
     """
 
     def setUp(self):
         self.entity = ENTITY.read_text()
         self.body = body_of(self.entity, "public bool OnPlayerInteract(")
 
-    def test_the_gesture_is_sneak_without_ctrl_and_not_holding_a_stone(self):
-        self.assertIn("sneaking && HasNiche && !adding && !RockPileUtil.IsPileableStone", self.body)
+    def test_putting_does_not_ask_for_sneak(self):
+        put = self.body.index("ok = PutInNiche(byPlayer);")
+        branch = self.body.rindex("else if", 0, put)
+        condition = self.body[branch:put]
+        self.assertNotIn("sneaking &&", condition)
+        self.assertIn("HasNiche", condition)
+        self.assertIn("!RockPileUtil.IsPileableStone", condition)
 
-    def test_an_empty_hand_takes_and_a_full_one_puts(self):
-        self.assertIn("hotbar.Empty ? TakeFromNiche(byPlayer) : PutInNiche(byPlayer)", self.body)
+    def test_taking_asks_for_sneak_and_an_empty_hand(self):
+        take = self.body.index("ok = TakeFromNiche(byPlayer);")
+        branch = self.body.rindex("else if", 0, take)
+        condition = self.body[branch:take]
+        self.assertIn("sneaking", condition)
+        self.assertIn("hotbar.Empty", condition)
+
+    def test_putting_only_answers_while_the_pocket_is_empty(self):
+        """Otherwise a plain click on a full niche would stop taking stones from the pile."""
+        put = self.body.index("ok = PutInNiche(byPlayer);")
+        condition = self.body[self.body.rindex("else if", 0, put):put]
+        self.assertIn("NicheSlot.Empty", condition)
 
     def test_taking_a_stone_still_answers_a_plain_right_click(self):
         self.assertLess(self.body.index("TakeFromNiche"), self.body.index("TryTake(byPlayer)"))
         self.assertIn("else if (!sneaking)", self.body)
+
+    def test_adding_a_stone_still_comes_first(self):
+        """Sneak + Ctrl with a stone must never be read as a niche gesture."""
+        self.assertLess(self.body.index("TryPut(byPlayer)"), self.body.index("PutInNiche(byPlayer)"))
 
     def test_the_niche_holds_one_item_rather_than_a_stack(self):
         """What it holds is drawn standing on the shelf, so a count would be a lie."""
