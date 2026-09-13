@@ -56,7 +56,8 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
     public BlockEntityRockPile()
     {
-        inventory = new InventoryGeneric(RockPileUtil.MaxSlots, null, null, (_, inv) => new ItemSlot(inv));
+        inventory = new InventoryGeneric(
+            RockPileUtil.InventorySize, null, null, (_, inv) => new ItemSlot(inv));
         foreach (var slot in inventory)
         {
             slot.StorageType |= EnumItemStorageFlags.Backpack;
@@ -84,7 +85,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
         get
         {
             var count = 0;
-            foreach (var slot in inventory)
+            foreach (var slot in StoneSlots)
             {
                 if (!slot.Empty)
                 {
@@ -95,6 +96,32 @@ public class BlockEntityRockPile : BlockEntityDisplay
             return count;
         }
     }
+
+    /// <summary>
+    /// The stone slots, which is every slot but the niche's.
+    ///
+    /// Everything that counts, fills, sheds or hands back stones walks this rather than the whole
+    /// inventory. Walking the inventory instead is how the niche's contents get counted as a stone
+    /// — and <see cref="ShedSurplus"/>, which walks from the top down, would shed them first.
+    /// </summary>
+    private IEnumerable<ItemSlot> StoneSlots
+    {
+        get
+        {
+            for (var i = 0; i < RockPileUtil.MaxSlots; i++)
+            {
+                yield return inventory[i];
+            }
+        }
+    }
+
+    private ItemSlot NicheSlot => inventory[RockPileUtil.NicheSlotIndex];
+
+    /// <summary>What is standing in the niche, if this pile has one and anything is in it.</summary>
+    public ItemStack? NicheStack => HasNiche ? NicheSlot.Itemstack : null;
+
+    /// <summary>Only one layout is built with a pocket in it; see RockPileUtil.HasNiche.</summary>
+    public bool HasNiche => RockPileUtil.HasNiche(layoutMode);
 
     /// <summary>
     /// How many stones this pile can hold as it is currently laid. Not a constant: the upper
@@ -126,6 +153,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
         // A pile saved before a layout changed size may be carrying stones the new one has no
         // slot for. Hand them back on load rather than hiding them.
         ShedSurplus();
+        ShedNiche();
         RegenCollision();
     }
 
@@ -176,6 +204,10 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
         layoutMode = mode;
         ShedSurplus();
+
+        // The layout that has just gone may have been the one with the pocket in it.
+        ShedNiche();
+
         RegenCollision();
         MarkMeshesDirty();
         MarkDirty(true);
@@ -202,7 +234,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
         var keep = SlotCount;
         var shed = 0;
-        for (var i = inventory.Count - 1; i >= 0 && StoneCount > keep; i--)
+        for (var i = RockPileUtil.MaxSlots - 1; i >= 0 && StoneCount > keep; i--)
         {
             if (inventory[i].Empty)
             {
@@ -321,6 +353,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
         // The new profile may hold fewer stones than the old one did.
         ShedSurplus();
+        ShedNiche();
         RegenCollision();
         MarkMeshesDirty();
         MarkDirty(true);
@@ -408,6 +441,14 @@ public class BlockEntityRockPile : BlockEntityDisplay
         {
             ok = TryPut(byPlayer);
         }
+        else if (sneaking && HasNiche && !adding && !RockPileUtil.IsPileableStone(hotbar.Itemstack))
+        {
+            // Sneak + right-click is the niche's own gesture, and it is free: plain right-click
+            // takes a stone, sneak + Ctrl adds one, and sneak on its own is only spoken for while a
+            // stone is in hand — that is the gesture that starts knapping one. So the niche answers
+            // it for anything that is not a stone, and for an empty hand, which takes back.
+            ok = hotbar.Empty ? TakeFromNiche(byPlayer) : PutInNiche(byPlayer);
+        }
         else if (!sneaking)
         {
             ok = TryTake(byPlayer);
@@ -421,7 +462,9 @@ public class BlockEntityRockPile : BlockEntityDisplay
         {
             RegenCollision();
             MarkDirty(true);
-            if (inventory.Empty && !clientsideFirstPlacement)
+            // Stones, not the inventory: something left in the niche must not keep an empty pile
+            // standing, and it is handed back by TakeNiche below before the block goes.
+            if (StoneCount == 0 && !clientsideFirstPlacement)
             {
                 Api.World.BlockAccessor.SetBlock(0, Pos);
                 Api.World.BlockAccessor.TriggerNeighbourBlockUpdate(Pos);
@@ -429,6 +472,97 @@ public class BlockEntityRockPile : BlockEntityDisplay
         }
 
         return ok;
+    }
+
+    /// <summary>
+    /// Stands one item in the niche.
+    ///
+    /// One item, not a stack: the niche is a shelf, and what it holds is drawn standing on it, so a
+    /// count would be a lie about what you can see. Anything is allowed — a torch, a flower, a
+    /// skull. A cairn beside a path is where people leave things.
+    /// </summary>
+    public bool PutInNiche(IPlayer byPlayer)
+    {
+        var hotbar = byPlayer.InventoryManager.ActiveHotbarSlot;
+        if (!HasNiche || hotbar.Empty || !NicheSlot.Empty)
+        {
+            return false;
+        }
+
+        var taken = hotbar.TakeOut(1);
+        if (taken is null)
+        {
+            return false;
+        }
+
+        NicheSlot.Itemstack = taken;
+        NicheSlot.MarkDirty();
+        hotbar.MarkDirty();
+
+        OnNicheChanged();
+        PlayStoneSound(byPlayer);
+        return true;
+    }
+
+    /// <summary>Takes back whatever is standing in the niche.</summary>
+    public bool TakeFromNiche(IPlayer byPlayer)
+    {
+        if (!HasNiche || NicheSlot.Empty)
+        {
+            return false;
+        }
+
+        var held = NicheSlot.TakeOutWhole();
+        NicheSlot.MarkDirty();
+
+        if (!byPlayer.InventoryManager.TryGiveItemstack(held))
+        {
+            Api.World.SpawnItemEntity(held, Pos.ToVec3d().Add(0.5, 0.75, 0.5));
+        }
+
+        OnNicheChanged();
+        PlayStoneSound(byPlayer);
+        return true;
+    }
+
+    /// <summary>
+    /// Hands back whatever is in the niche, for when the pocket stops existing.
+    ///
+    /// Restyling a niche cairn into anything else takes the pocket away, and an item held in a slot
+    /// nothing draws is exactly the quiet lie <see cref="ShedSurplus"/> exists to avoid.
+    /// </summary>
+    private void ShedNiche()
+    {
+        if (Api is null || Api.Side != EnumAppSide.Server || NicheSlot.Empty || HasNiche)
+        {
+            return;
+        }
+
+        var held = NicheSlot.TakeOutWhole();
+        NicheSlot.MarkDirty();
+        Api.World.SpawnItemEntity(held, Pos.ToVec3d().Add(0.5, 0.75, 0.5));
+        OnNicheChanged();
+    }
+
+    /// <summary>
+    /// Redraws the pile and asks the world to light it again.
+    ///
+    /// The light is why this is not just a MarkDirty: a pile holding a torch emits what the torch
+    /// emits — see <see cref="BlockRockPile.GetLightHsv"/> — and the lighting engine only asks a
+    /// block what it emits when something tells it the block changed.
+    /// </summary>
+    private void OnNicheChanged()
+    {
+        MarkMeshesDirty();
+        MarkDirty(true);
+
+        if (Api?.Side != EnumAppSide.Server)
+        {
+            return;
+        }
+
+        Api.World.BlockAccessor.MarkBlockDirty(Pos);
+        Api.World.BlockAccessor.MarkBlockModified(Pos);
     }
 
     public bool TryPut(IPlayer byPlayer)
@@ -546,7 +680,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
     private ItemSlot? FirstEmptySlot()
     {
-        foreach (var slot in inventory)
+        foreach (var slot in StoneSlots)
         {
             if (slot.Empty)
             {
@@ -559,7 +693,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
     private ItemSlot? LastFilledSlot()
     {
-        for (var i = inventory.Count - 1; i >= 0; i--)
+        for (var i = RockPileUtil.MaxSlots - 1; i >= 0; i--)
         {
             if (!inventory[i].Empty)
             {
@@ -573,7 +707,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
     public ItemStack[] GetContentStacks()
     {
         var stacks = new List<ItemStack>(StoneCount);
-        foreach (var slot in inventory)
+        foreach (var slot in StoneSlots)
         {
             if (!slot.Empty)
             {
@@ -590,7 +724,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// </summary>
     public void PopulateFrom(IReadOnlyList<ItemStack> stones, RockPileLayoutMode mode)
     {
-        for (var i = 0; i < inventory.Count; i++)
+        for (var i = 0; i < RockPileUtil.MaxSlots; i++)
         {
             inventory[i].Itemstack =
                 i < stones.Count ? RockPileUtil.ClearHeldLayoutMode(stones[i].Clone()) : null;
@@ -615,7 +749,9 @@ public class BlockEntityRockPile : BlockEntityDisplay
         var layout = CurrentLayout();
         var yaw = YawDeg;
 
-        var matrices = new float[RockPileUtil.MaxSlots][];
+        var matrices = new float[RockPileUtil.InventorySize][];
+        matrices[RockPileUtil.NicheSlotIndex] = NicheMatrix(yaw);
+
         for (var i = 0; i < RockPileUtil.MaxSlots; i++)
         {
             var pose = i < layout.Length
@@ -638,6 +774,38 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
         return matrices;
     }
+
+    /// <summary>
+    /// Where the niche's item stands, and how big.
+    ///
+    /// The pocket is cut facing +Z and the whole pile is yawed by its orientation, so this is
+    /// written for the unturned pile and turned with everything else — point the cairn wherever you
+    /// like and the thing in the pocket goes with it.
+    ///
+    /// Scaled down, because an item meshes at the size it would be as a block and a full-size torch
+    /// in a 10px window is a torch wearing a cairn. Standing on the shelf that course zero leaves,
+    /// far enough forward to be seen through the opening and far enough back to be inside it.
+    /// </summary>
+    private static float[] NicheMatrix(float yaw)
+    {
+        return new Matrixf()
+            .Translate(0.5f, 0f, 0.5f)
+            .RotateYDeg(yaw)
+            .Translate(-0.5f, 0f, -0.5f)
+            .Translate(0.5f, NicheShelfHeight, NicheDepth)
+            .Scale(NicheScale, NicheScale, NicheScale)
+            .Translate(-0.5f, 0f, -0.5f)
+            .Values;
+    }
+
+    /// <summary>The top of course zero, which is the floor of the pocket.</summary>
+    private const float NicheShelfHeight = 2f / 16f;
+
+    /// <summary>Forward of centre, so it reads through the opening rather than behind the ring.</summary>
+    private const float NicheDepth = 0.5f + 1.5f / 16f;
+
+    /// <summary>A torch is a full block tall; the window is ten pixels.</summary>
+    private const float NicheScale = 0.55f;
 
     public override void ToTreeAttributes(ITreeAttribute tree)
     {
@@ -674,6 +842,15 @@ public class BlockEntityRockPile : BlockEntityDisplay
         if (IsSolid)
         {
             dsc.AppendLine(Lang.Get("acervuslapidum:blockinfo-rockpile-solid"));
+        }
+
+        // An empty pocket says what it is for. A pocket that has something in it names it, because
+        // at this scale a torch and a stick are the same few pixels.
+        if (HasNiche)
+        {
+            dsc.AppendLine(NicheStack is { } held
+                ? Lang.Get("acervuslapidum:blockinfo-rockpile-niche", held.GetName())
+                : Lang.Get("acervuslapidum:blockinfo-rockpile-niche-empty"));
         }
     }
 }

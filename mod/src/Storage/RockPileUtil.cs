@@ -51,6 +51,22 @@ public static class RockPileUtil
     public const int MaxSlots = 96;
 
     /// <summary>
+    /// The niche's slot, past every stone slot.
+    ///
+    /// Reserved rather than borrowed from the stones: what the niche holds is not a stone and must
+    /// not be counted as one, shed as surplus when the layout narrows, or handed to the vanilla
+    /// pile the revert command builds. Every stone-side walk stops at <see cref="MaxSlots"/>, so
+    /// the one thing that can reach this slot is the niche itself.
+    /// </summary>
+    public const int NicheSlotIndex = MaxSlots;
+
+    /// <summary>Stone slots plus the niche.</summary>
+    public const int InventorySize = MaxSlots + 1;
+
+    /// <summary>Whether a pile laid this way has a niche to put anything in.</summary>
+    public static bool HasNiche(RockPileLayoutMode mode) => mode == RockPileLayoutMode.NicheCairn;
+
+    /// <summary>
     /// Vanilla's own loose-pile density: the top cube of <c>item/stone-pile</c> sits at 12.4px, so
     /// 32 stones fill a block the way the game already fills one. Heap and neat hold exactly
     /// this, so tipping stone on the ground behaves as it always did.
