@@ -211,6 +211,44 @@ class TestTheNicheIsSeenAndLit(unittest.TestCase):
                 self.assertIn(key, lang)
 
 
+class TestItemsArePosedAsThingsOnAShelf(unittest.TestCase):
+    """A niche is a shelf, so the pile poses stacks by the shelf transform.
+
+    One named transform decides how every stack in the pile is posed before its slot matrix runs,
+    stones and the niche's contents alike, so it has to suit both. Stone declares no shelf transform,
+    so the lookup finds nothing and its mesh arrives exactly as authored — which is what the layout
+    generator assumes. A book declares both, and they say different things: its ground storage
+    transform lays it flat and steps it sideways (found books) or leaves it standing at 35 degrees
+    (the ones written in creative), while its shelf transform is empty, meaning upright and square
+    on. The pocket wants the second.
+    """
+
+    def setUp(self):
+        self.entity = ENTITY.read_text()
+
+    def test_the_pile_poses_stacks_by_the_shelf_transform(self):
+        self.assertIn('public override string AttributeTransformCode => "onshelfTransform";',
+                      self.entity)
+
+    def test_the_identity_patch_is_gone_rather_than_left_lying_around(self):
+        """It existed only to make the old lookup a no-op. Asking for a code stone does not declare
+        is the same no-op with nothing to keep in step — and a dead patch with a load-bearing
+        comment on it is a trap."""
+        patch = json.loads((MOD / "assets/acervuslapidum/patches/stone-rockpileable.json").read_text())
+        self.assertNotIn("/attributes/groundStorageTransform", [e.get("path") for e in patch])
+
+        # And the generator, which depends on the stone mesh arriving as authored, says why it does.
+        preamble = (ROOT / "tools/rockpile_geometry.py").read_text().split('"""', 2)[1]
+        self.assertIn("onshelfTransform", preamble)
+
+    def test_an_empty_transform_does_not_shrink_the_item_to_nothing(self):
+        """A book's shelf transform is `{}`, whose fields come back as zeroes — a scale of zero
+        among them, which would render nothing at all."""
+        body = body_of(self.entity, "private float[] NicheMatrix(")
+        self.assertIn("EnsureDefaultValues()", body)
+        self.assertIn("ownScale > 0.01f", body)
+
+
 class TestOnlyTheNicheCairnHasOne(unittest.TestCase):
     def test_the_layout_decides_it_in_one_place(self):
         util = UTIL.read_text()

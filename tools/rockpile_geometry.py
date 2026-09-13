@@ -8,8 +8,12 @@ Two facts make the conversion exact rather than eyeballed.
 
 1. ``survival/shapes/item/stone.json`` is a **single cube**, ``from [5.5, 0, 6]`` ``to
    [10.5, 2, 10]``, rotation origin ``[8, 0, 8]``. Horizontally it is centred on the block; its
-   bottom sits at y = 0. We patch an identity ``groundStorageTransform`` onto the stone item, so
-   ``BlockEntityDisplay`` hands that mesh to us untouched.
+   bottom sits at y = 0. ``BlockEntityDisplay`` poses every stack by one named display
+   transform before the slot matrix runs, and the pile asks for ``onshelfTransform`` — which stone
+   does not declare, so the lookup finds nothing and the mesh arrives untouched. (It used to ask for
+   the ground storage transform and patch an identity one onto stone to the same end. Asking for a
+   code stone does not have is the same no-op with nothing to keep in step, and it lets the niche's
+   contents be posed as things standing on a shelf, which is what they are.)
 
 2. ``BlockEntityRockPile.genTransformationMatrices`` applies
    ``Translate(x, y, z) . RotY(yaw) . RotX(pitch) . RotZ(roll) . Translate(-0.5, 0, -0.5)``.

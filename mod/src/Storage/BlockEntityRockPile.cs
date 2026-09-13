@@ -68,11 +68,23 @@ public class BlockEntityRockPile : BlockEntityDisplay
     public override string InventoryClassName => "acervuslapidum-rockpile";
 
     /// <summary>
-    /// The stone item has no ground storage transform of its own; we patch an identity one on so
-    /// this resolves to a no-op and the mesh arrives exactly as its shape file draws it. The
-    /// layout generator relies on that — see tools/rockpile_geometry.py.
+    /// The shelf transform, not the ground storage one — because a niche is a shelf.
+    ///
+    /// This single code decides how every stack in the pile is posed before its slot matrix runs,
+    /// stones and the niche's contents alike, so it has to suit both.
+    ///
+    /// Stone declares neither, so it resolves to nothing and the mesh arrives exactly as its shape
+    /// file draws it. The layout generator relies on that — see tools/rockpile_geometry.py — and it
+    /// used to be arranged by patching an identity groundStorageTransform onto stone, which is the
+    /// same no-op reached more directly by asking for a code stone does not have.
+    ///
+    /// What changes is everything else. A book carries both: its groundStorageTransform is authored
+    /// for lying in a pile — found books get a 90 degree roll that lays them flat and a step
+    /// sideways, and the ones players write in creative get a 35 degree yaw that leaves them
+    /// standing crooked — while its onshelfTransform is empty, which is to say upright and square
+    /// on, the way a book stands on a shelf. That is the pose a pocket in a cairn wants.
     /// </summary>
-    public override string AttributeTransformCode => "groundStorageTransform";
+    public override string AttributeTransformCode => "onshelfTransform";
 
     public override string ClassCode => "acervuslapidumrockpile";
 
@@ -796,24 +808,26 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// written for the unturned pile and turned with everything else — point the cairn wherever you
     /// like and the thing in the pocket goes with it.
     ///
-    /// Two corrections for the item's own ground-storage transform, which the pile resolves through
-    /// <see cref="AttributeTransformCode"/> and which is authored for a very different container.
-    /// Some items declare one and most do not — 113 of vanilla's 845 — so without these a torch and
-    /// a book sit at different sizes in different places.
+    /// Two corrections for whatever display transform the item brings, which the pile resolves
+    /// through <see cref="AttributeTransformCode"/>. Most of the work is done by asking for the
+    /// shelf transform rather than the ground storage one, and books come out upright on that
+    /// alone — but only 19 of vanilla's item files declare a shelf transform at all, so this is the
+    /// net for the ones that do and mean something else by it.
     ///
-    /// Its scale is divided out, so everything ends up the size the niche wants rather than the
-    /// size a ground pile wanted. Its translation is cancelled, because a pocket is ten pixels
-    /// across and there is no room to be shoved out of it — vanilla's book steps 0.12 sideways and
-    /// its shattered clay sinks 0.3 down, both of which leave a niche entirely.
+    /// Scale is divided out, so everything ends up the size the niche wants rather than the size
+    /// its own container wanted. Translation is cancelled, because a pocket is ten pixels across
+    /// and there is no room to be shoved out of it.
     ///
-    /// Its rotation is deliberately kept. That is the part an item's author used to make the thing
-    /// sit upright on a surface, and a niche is a surface: the book's roll of 90 degrees is what
-    /// stands it on its spine rather than laying it face down.
+    /// Rotation is kept. That is the part an item's author used to make the thing sit the right way
+    /// up on a surface — a scroll's 50 degree lean on a shelf is a lean somebody chose.
     /// </summary>
     private float[] NicheMatrix(float yaw)
     {
         var own = NicheSlot.Itemstack?.Collectible?.Attributes?[AttributeTransformCode]
-            ?.AsObject<ModelTransform>();
+            ?.AsObject<ModelTransform>()
+            // An empty declaration is how a book says "upright, as authored", and its fields come
+            // back as zeroes — including a scale of zero, which would render nothing at all.
+            ?.EnsureDefaultValues();
 
         var ownScale = own?.ScaleXYZ.X ?? 1f;
         var scale = NicheScale / (ownScale > 0.01f ? ownScale : 1f);
