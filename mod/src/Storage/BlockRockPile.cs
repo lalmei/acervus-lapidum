@@ -89,12 +89,47 @@ public class BlockRockPile : Block
 
     public override ItemStack[] GetDrops(IWorldAccessor world, BlockPos pos, IPlayer byPlayer, float dropQuantityMultiplier = 1f)
     {
-        if (world.BlockAccessor.GetBlockEntity(pos) is BlockEntityRockPile pile)
+        if (world.BlockAccessor.GetBlockEntity(pos) is not BlockEntityRockPile pile)
         {
-            return pile.GetContentStacks();
+            return [];
         }
 
-        return [];
+        var drops = pile.GetContentStacks();
+
+        // Whatever was standing in the niche comes back too. GetContentStacks is stones only —
+        // the revert command feeds it to a vanilla stone pile, which would have nowhere to put a
+        // torch — so the niche is added here, where the drop list is what a player picks up.
+        return pile.NicheStack is { } held ? [.. drops, held.Clone()] : drops;
+    }
+
+    /// <summary>
+    /// A pile lit by what is standing in its niche.
+    ///
+    /// The hook is asked per position rather than per block type, which is what lets one block id
+    /// answer differently for every pile: a cairn with a torch in its pocket emits the torch's own
+    /// light, and the same cairn empty emits nothing. What makes the world ask again after somebody
+    /// puts a torch in is BlockEntityRockPile.OnNicheChanged.
+    /// </summary>
+    public override byte[] GetLightHsv(IBlockAccessor blockAccessor, BlockPos pos, ItemStack? stack = null)
+    {
+        if (blockAccessor.GetBlockEntity(pos) is BlockEntityRockPile pile
+            && pile.NicheStack is { } held)
+        {
+            // Asked of the held thing through the same hook rather than read off its LightHsv
+            // field: a torch is a block carried as an item, and delegating means anything that
+            // knows how to glow — a lantern, another mod's lamp — glows here for the same reason it
+            // glows anywhere else.
+            if (held.Block is { } lit)
+            {
+                var light = lit.GetLightHsv(blockAccessor, pos, held);
+                if (light is { Length: 3 } && light[2] > 0)
+                {
+                    return light;
+                }
+            }
+        }
+
+        return base.GetLightHsv(blockAccessor, pos, stack);
     }
 
     /// <summary>
@@ -135,7 +170,25 @@ public class BlockRockPile : Block
         BlockSelection selection,
         IPlayer forPlayer)
     {
-        return new WorldInteraction[]
+        var help = new List<WorldInteraction>();
+
+        // Only offered on a pile that has a pocket to put something in, and it says which of put
+        // and take you are about to do rather than listing both — the gesture is the same one and
+        // what decides it is whether your hand is empty.
+        if (world.BlockAccessor.GetBlockEntity(selection.Position) is BlockEntityRockPile niche
+            && niche.HasNiche)
+        {
+            help.Add(new WorldInteraction
+            {
+                ActionLangCode = niche.NicheStack is null
+                    ? "acervuslapidum:blockhelp-rockpile-niche-put"
+                    : "acervuslapidum:blockhelp-rockpile-niche-take",
+                MouseButton = EnumMouseButton.Right,
+                HotKeyCodes = ["shift"]
+            });
+        }
+
+        return help.Concat(new WorldInteraction[]
         {
             new()
             {
@@ -167,7 +220,7 @@ public class BlockRockPile : Block
                 HotKeyCode = RockPileLayoutHotkey.HotkeyCode,
                 MouseButton = EnumMouseButton.None
             }
-        }.Append(base.GetPlacedBlockInteractionHelp(world, selection, forPlayer));
+        }).ToArray().Append(base.GetPlacedBlockInteractionHelp(world, selection, forPlayer));
     }
 
     private static ItemStack[]? GetExampleStoneStacks(IWorldAccessor world)
