@@ -132,8 +132,13 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// <summary>What is standing in the niche, if this pile has one and anything is in it.</summary>
     public ItemStack? NicheStack => HasNiche ? NicheSlot.Itemstack : null;
 
-    /// <summary>Only one layout is built with a pocket in it; see RockPileUtil.HasNiche.</summary>
-    public bool HasNiche => RockPileUtil.HasNiche(layoutMode);
+    /// <summary>
+    /// Whether this pile, here, has a pocket to put something in.
+    ///
+    /// One layout builds a pocket, and it builds it one course up — so the footing of a niche
+    /// cairn has nowhere to put a torch, and neither does the spire. See RockPileUtil.HasNiche.
+    /// </summary>
+    public bool HasNiche => RockPileUtil.HasNiche(layoutMode, segmentIndex);
 
     /// <summary>
     /// How many stones this pile can hold as it is currently laid. Not a constant: the upper
@@ -161,6 +166,11 @@ public class BlockEntityRockPile : BlockEntityDisplay
         base.Initialize(api);
         LoadLayout(api);
         RecalcSegmentIndex();
+
+        // Recorded, not applied: a pile loaded from disk already had its niche's light baked into
+        // the chunk when it was saved. What this is for is the other end — knowing what to take
+        // back out of the world when the torch is lifted or the pile is broken.
+        nicheLight = RockPileUtil.NicheLightHsv(api.World.BlockAccessor, NicheStack);
 
         // A pile saved before a layout changed size may be carrying stones the new one has no
         // slot for. Hand them back on load rather than hiding them.
@@ -492,6 +502,7 @@ public class BlockEntityRockPile : BlockEntityDisplay
             // standing, and it is handed back by TakeNiche below before the block goes.
             if (StoneCount == 0 && !clientsideFirstPlacement)
             {
+                ClearNicheLight();
                 Api.World.BlockAccessor.SetBlock(0, Pos);
                 Api.World.BlockAccessor.TriggerNeighbourBlockUpdate(Pos);
             }
@@ -579,6 +590,8 @@ public class BlockEntityRockPile : BlockEntityDisplay
     /// </summary>
     private void OnNicheChanged()
     {
+        UpdateNicheLight();
+
         MarkMeshesDirty();
         MarkDirty(true);
 
@@ -589,6 +602,72 @@ public class BlockEntityRockPile : BlockEntityDisplay
 
         Api.World.BlockAccessor.MarkBlockDirty(Pos);
         Api.World.BlockAccessor.MarkBlockModified(Pos);
+    }
+
+    /// <summary>
+    /// What the niche was last giving off, so it can be taken back out of the world's light when
+    /// the torch leaves. Nothing else remembers it: by then the slot is empty and
+    /// <see cref="BlockRockPile.GetLightHsv"/> answers with darkness, which is the right answer to
+    /// the wrong question — the lighting engine needs to be told what to subtract.
+    /// </summary>
+    private byte[]? nicheLight;
+
+    /// <summary>
+    /// Brings the world's lighting in line with what is standing in the niche.
+    ///
+    /// This is the half that was missing, and why a torch in a pocket stayed dark. MarkBlockDirty
+    /// redraws a chunk and MarkBlockModified re-sends a block; neither is a light update. The
+    /// lighting task only re-reads a position's emission when the *block* there changes, and
+    /// putting a torch in a pocket changes only the block entity.
+    ///
+    /// So the block is exchanged for itself. ExchangeBlock swaps a block id in place without
+    /// running OnBlockRemoved or OnBlockPlaced — the block entity, and the torch in it, survive
+    /// untouched — and the swap is the change the lighting task is waiting for. It then asks
+    /// GetLightHsv, which finds the torch. This is the same nudge vanilla ground storage gives
+    /// when you tip a lit torch onto the floor; see BlockEntityGroundStorage.LightUpdate.
+    ///
+    /// Taking the torch back out cannot use the same trick: re-reading a position that no longer
+    /// emits does not undo light already spread from it, so the old value is handed to
+    /// RemoveBlockLight, which is the API's own way of saying a block has stopped glowing.
+    ///
+    /// Run on both sides. The server owns the saved light, but the client lights what it draws,
+    /// and a client that waited for the server would show a dark pile for the round trip.
+    /// </summary>
+    private void UpdateNicheLight()
+    {
+        if (Api is null)
+        {
+            return;
+        }
+
+        var previous = nicheLight;
+        nicheLight = RockPileUtil.NicheLightHsv(Api.World.BlockAccessor, NicheStack);
+
+        if (nicheLight is not null)
+        {
+            Api.World.BlockAccessor.ExchangeBlock(Block.Id, Pos);
+        }
+        else if (previous is not null)
+        {
+            Api.World.BlockAccessor.RemoveBlockLight((byte[])previous.Clone(), Pos);
+        }
+    }
+
+    /// <summary>
+    /// Takes the niche's light back out of the world, for when the pile itself is about to go.
+    ///
+    /// Called while the block entity is still there — which is the whole point of the hook: once
+    /// the block is gone there is nothing left to ask what it had been giving off.
+    /// </summary>
+    public void ClearNicheLight()
+    {
+        if (Api is null || nicheLight is not { } lit)
+        {
+            return;
+        }
+
+        nicheLight = null;
+        Api.World.BlockAccessor.RemoveBlockLight((byte[])lit.Clone(), Pos);
     }
 
     public bool TryPut(IPlayer byPlayer)
@@ -880,10 +959,13 @@ public class BlockEntityRockPile : BlockEntityDisplay
             "acervuslapidum:blockinfo-rockpile-layout",
             Lang.Get("acervuslapidum:rockpile-layout-" + layoutMode.ToString().ToLowerInvariant())));
 
-        // Worth saying out loud: it is the cue that you can start the next course of a cairn.
+        // Worth saying out loud: it is the cue that you can start the next course of a cairn — or,
+        // for a heap, the cue that there is no next course and why.
         if (IsFull)
         {
-            dsc.AppendLine(Lang.Get("acervuslapidum:blockinfo-rockpile-full"));
+            dsc.AppendLine(Lang.Get(RockPileUtil.CanBearLoad(layoutMode)
+                ? "acervuslapidum:blockinfo-rockpile-full"
+                : "acervuslapidum:blockinfo-rockpile-full-loose"));
         }
 
         if (IsSolid)
@@ -898,6 +980,13 @@ public class BlockEntityRockPile : BlockEntityDisplay
             dsc.AppendLine(NicheStack is { } held
                 ? Lang.Get("acervuslapidum:blockinfo-rockpile-niche", held.GetName())
                 : Lang.Get("acervuslapidum:blockinfo-rockpile-niche-empty"));
+        }
+        else if (RockPileUtil.IsNicheLayout(layoutMode) && segmentIndex < RockPileUtil.NicheSegment)
+        {
+            // A niche cairn laid on the ground is a footing with no pocket in it, and without a
+            // word here that reads as the layout having quietly failed. The pocket is a course up;
+            // say so, rather than leaving someone to find it by accident.
+            dsc.AppendLine(Lang.Get("acervuslapidum:blockinfo-rockpile-niche-above"));
         }
     }
 }

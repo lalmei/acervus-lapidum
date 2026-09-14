@@ -34,9 +34,11 @@
   "blockinfo-rockpile-count": "{0} of {1} stones",
   "blockinfo-rockpile-layout": "Laid as: {0}",
   "blockinfo-rockpile-full": "Full — place a stone on top to start the next course",
+  "blockinfo-rockpile-full-loose": "Full — tipped stone will not carry another course. Lay it as something else to build up.",
   "blockinfo-rockpile-solid": "Solid — you can build on this",
   "blockinfo-rockpile-niche-empty": "Empty niche — right-click with something in hand to stand it in there",
   "blockinfo-rockpile-niche": "In the niche: {0}",
+  "blockinfo-rockpile-niche-above": "The niche is the next course up — fill this footing and build on it",
 
   "blockhelp-rockpile-add": "Add a stone (hold to keep adding)",
   "blockhelp-rockpile-take": "Take a stone",

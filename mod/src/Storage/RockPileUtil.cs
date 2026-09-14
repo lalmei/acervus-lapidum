@@ -63,8 +63,53 @@ public static class RockPileUtil
     /// <summary>Stone slots plus the niche.</summary>
     public const int InventorySize = MaxSlots + 1;
 
-    /// <summary>Whether a pile laid this way has a niche to put anything in.</summary>
-    public static bool HasNiche(RockPileLayoutMode mode) => mode == RockPileLayoutMode.NicheCairn;
+    /// <summary>Whether a pile laid this way builds a pocket anywhere in its column.</summary>
+    public static bool IsNicheLayout(RockPileLayoutMode mode) => mode == RockPileLayoutMode.NicheCairn;
+
+    /// <summary>
+    /// The course up a cairn that the pocket is cut into: the body, not the footing.
+    ///
+    /// A pocket at ground level is a pocket you kneel to. A cairn is built to be read while
+    /// walking past, so the thing standing in it belongs at the height it can be seen at. A niche
+    /// cairn is therefore a cairn all the way up with one course of it opened — footing below,
+    /// spire above, socket between — and which course that is has to be agreed on twice: here,
+    /// and by the generator that cuts the stones out. See NICHE_SEGMENT in
+    /// tools/rockpile_geometry.py.
+    /// </summary>
+    public const int NicheSegment = 1;
+
+    /// <summary>
+    /// Whether a pile laid this way, at this height up its column, has a niche to put anything in.
+    ///
+    /// Positional, not just a property of the layout: the footing of a niche cairn is an ordinary
+    /// cairn footing and has nowhere to put a torch. A pile that stops being the middle course —
+    /// because the one under it was broken out — stops having a pocket, and hands back whatever
+    /// was in it; see BlockEntityRockPile.ShedNiche, which runs on every segment recount.
+    /// </summary>
+    public static bool HasNiche(RockPileLayoutMode mode, int segment) =>
+        IsNicheLayout(mode) && segment == NicheSegment;
+
+    /// <summary>
+    /// What a thing standing in a niche gives off, or null for anything that does not glow.
+    ///
+    /// Asked of the collectible rather than its block, and with no position — both deliberate,
+    /// and both copied from what vanilla ground storage does with a torch tipped onto the floor.
+    ///
+    /// No position, because a block asked about one answers for the block entity standing there:
+    /// <c>BlockLantern</c> looks for a <c>BELantern</c> at that position and the thing standing at
+    /// this one is a rock pile, so asking about our own position is asking the lantern to describe
+    /// somebody else. Passing null sends it down the branch that reads the stack it was handed,
+    /// which is the lantern in the pocket and its own glass and lining.
+    ///
+    /// The collectible rather than the block, because not everything that glows is a block: the
+    /// hook is declared on <c>CollectibleObject</c>, and reaching for <c>stack.Block</c> quietly
+    /// drops every item that emits light.
+    /// </summary>
+    public static byte[]? NicheLightHsv(IBlockAccessor accessor, ItemStack? stack)
+    {
+        var light = stack?.Collectible?.GetLightHsv(accessor, null, stack);
+        return light is { Length: 3 } && light[2] > 0 ? light : null;
+    }
 
     /// <summary>
     /// Vanilla's own loose-pile density: the top cube of <c>item/stone-pile</c> sits at 12.4px, so
@@ -89,6 +134,21 @@ public static class RockPileUtil
         return mode == RockPileLayoutMode.Masonry
                || (mode == RockPileLayoutMode.Steps && loadAbove);
     }
+
+    /// <summary>
+    /// Whether a pile laid this way can carry anything on top of it, once it is full.
+    ///
+    /// Everything can except a heap. A heap is stone tipped on the ground and left where it fell —
+    /// no course, no bed, nothing sitting square on anything — and a second pile balanced on that
+    /// is the one thing in the whole set that drystone would not hold up. Every other layout is
+    /// laid: a cairn's rings are bedded, a wall and a masonry cube are coursed, even a ring and a
+    /// spiral are stones put deliberately where they are.
+    ///
+    /// The rule shows up as a full heap simply refusing the next stone rather than starting a
+    /// course above it, which is the same language the game already speaks for a part-built
+    /// course: fill it, and if it will not carry, that is as tall as it goes.
+    /// </summary>
+    public static bool CanBearLoad(RockPileLayoutMode mode) => mode != RockPileLayoutMode.Heap;
 
     /// <summary>One stone a click. Vanilla moves two, but vanilla draws one rock per two stones.</summary>
     public const int TransferQuantity = 1;
@@ -353,7 +413,7 @@ public sealed class RockPileLayoutConfig
     [JsonProperty("arrow")]
     public RockPileSlotTransform[] Arrow { get; set; } = [];
 
-    /// <summary>The cairn footing with a pocket cut into one face, for something to sit in.</summary>
+    /// <summary>The cairn's body course with a pocket cut into one face, for something to sit in.</summary>
     [JsonProperty("nichecairn")]
     public RockPileSlotTransform[] NicheCairn { get; set; } = [];
 
@@ -395,9 +455,17 @@ public sealed class RockPileLayoutConfig
             RockPileLayoutMode.TwinColumns => TwinColumns,
             RockPileLayoutMode.Arrow => Arrow,
 
-            // One profile, not the cairn's three: a pocket belongs at the foot where you can reach
-            // into it, and a segment stacked above this one is an ordinary cairn course.
-            RockPileLayoutMode.NicheCairn => NicheCairn,
+            // A cairn with one course of it opened, which means it is a cairn everywhere else:
+            // the footing under the pocket and every segment over it are the plain profiles, and
+            // only the middle one is the cut course. Laying the pocket at every height instead
+            // would stack sockets up a column like windows in a tower.
+            RockPileLayoutMode.NicheCairn =>
+                Math.Clamp(segment, 0, RockPileUtil.CairnSegmentProfiles - 1) switch
+                {
+                    RockPileUtil.NicheSegment => NicheCairn,
+                    0 => Cairn0,
+                    _ => Cairn2
+                },
             RockPileLayoutMode.Cairn => Math.Clamp(segment, 0, RockPileUtil.CairnSegmentProfiles - 1) switch
             {
                 0 => Cairn0,

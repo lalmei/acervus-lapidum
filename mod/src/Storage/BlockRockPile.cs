@@ -40,6 +40,10 @@ public class BlockRockPile : Block
     /// The upward rule is the whole cairn mechanic. You cannot start a second course on a pile
     /// with gaps in it, which is both how drystone actually works and a clear rule to read in
     /// game: fill the course you are on, then keep going up.
+    ///
+    /// A heap never carries anything, full or not. It is stone tipped on the ground rather than
+    /// laid, so there is no bed under the next course and nothing for it to sit square on — see
+    /// <see cref="RockPileUtil.CanBearLoad"/>. Building up starts with laying the stone properly.
     /// </summary>
     public override bool CanAttachBlockAt(
         IBlockAccessor blockAccessor,
@@ -53,7 +57,8 @@ public class BlockRockPile : Block
             return base.CanAttachBlockAt(blockAccessor, block, pos, blockFace, attachmentArea);
         }
 
-        return pile.IsSolid || (blockFace == BlockFacing.UP && pile.IsFull);
+        return pile.IsSolid
+               || (blockFace == BlockFacing.UP && pile.IsFull && RockPileUtil.CanBearLoad(pile.LayoutMode));
     }
 
     /// <summary>
@@ -113,20 +118,13 @@ public class BlockRockPile : Block
     public override byte[] GetLightHsv(IBlockAccessor blockAccessor, BlockPos pos, ItemStack? stack = null)
     {
         if (blockAccessor.GetBlockEntity(pos) is BlockEntityRockPile pile
-            && pile.NicheStack is { } held)
+            && RockPileUtil.NicheLightHsv(blockAccessor, pile.NicheStack) is { } light)
         {
             // Asked of the held thing through the same hook rather than read off its LightHsv
             // field: a torch is a block carried as an item, and delegating means anything that
             // knows how to glow — a lantern, another mod's lamp — glows here for the same reason it
             // glows anywhere else.
-            if (held.Block is { } lit)
-            {
-                var light = lit.GetLightHsv(blockAccessor, pos, held);
-                if (light is { Length: 3 } && light[2] > 0)
-                {
-                    return light;
-                }
-            }
+            return light;
         }
 
         return base.GetLightHsv(blockAccessor, pos, stack);
@@ -138,6 +136,10 @@ public class BlockRockPile : Block
     /// </summary>
     public override void OnBlockBroken(IWorldAccessor world, BlockPos pos, IPlayer byPlayer, float dropQuantityMultiplier = 1)
     {
+        // Before the base call, while the block entity still exists: a pile lit by a torch in its
+        // pocket has to hand that light back, and only it knows how much light that was.
+        (world.BlockAccessor.GetBlockEntity(pos) as BlockEntityRockPile)?.ClearNicheLight();
+
         base.OnBlockBroken(world, pos, byPlayer, dropQuantityMultiplier);
         RefreshColumnAbove(world, pos);
     }
@@ -280,9 +282,25 @@ public class BlockRockPile : Block
 
         var held = player.InventoryManager.ActiveHotbarSlot;
         RockPileUtil.ClearHeldLayoutMode(held.Itemstack);
-        pile.SetLayoutMode(RockPileUtil.GetPreferredLayoutMode(player.Entity));
+        var mode = RockPileUtil.GetPreferredLayoutMode(player.Entity);
+        pile.SetLayoutMode(mode);
 
-        pile.SetOrientation(WallOrientationFor(world, pos, player));
+        // Which way the pocket looks, for the one layout that builds one.
+        //
+        // Orientation otherwise follows the builder's own facing, which is right for everything
+        // that is read from behind — a wall runs the way you walk, an arrow points the way you
+        // look. A niche is the opposite kind of thing: it is a face, and a face wants to be
+        // looked at. Built on the builder's own bearing it came out addressing the far side of
+        // the pile, so you laid a cairn and then had to walk round it to find the pocket.
+        //
+        // Half of eight steps is four, which is the 180 degrees that turns the pocket around.
+        var orientation = WallOrientationFor(world, pos, player);
+        if (RockPileUtil.IsNicheLayout(mode))
+        {
+            orientation += RockPileUtil.OrientationSteps / 2;
+        }
+
+        pile.SetOrientation(orientation);
 
         if (!pile.TryPut(player))
         {
