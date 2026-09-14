@@ -156,6 +156,7 @@ class TestTheNicheIsSeenAndLit(unittest.TestCase):
     def setUp(self):
         self.entity = ENTITY.read_text()
         self.block = BLOCK.read_text()
+        self.util = UTIL.read_text()
 
     def test_the_item_is_drawn_in_the_pocket_and_turns_with_the_pile(self):
         body = body_of(self.entity, "private float[] NicheMatrix(")
@@ -180,16 +181,48 @@ class TestTheNicheIsSeenAndLit(unittest.TestCase):
 
     def test_the_pile_emits_what_the_niche_holds(self):
         body = body_of(self.block, "public override byte[] GetLightHsv(")
-        self.assertIn("pile.NicheStack is { } held", body)
-        self.assertIn("lit.GetLightHsv(blockAccessor, pos, held)", body)
+        self.assertIn("RockPileUtil.NicheLightHsv(blockAccessor, pile.NicheStack)", body)
+
+    def test_the_held_thing_is_asked_about_itself_and_not_about_this_position(self):
+        """Two ways to ask a torch how brightly it burns, and only one of them works here.
+
+        A block asked about a *position* answers for the block entity standing at it: BlockLantern
+        looks for a BELantern there, BlockGroundStorage for a BEGroundStorage. What stands at our
+        position is a rock pile, so asking about it is asking the lantern to describe somebody else.
+        Vanilla passes null, which sends it down the branch that reads the stack it was handed.
+
+        The collectible rather than the block, for the same reason vanilla does: GetLightHsv is
+        declared on CollectibleObject, and reaching through `stack.Block` drops every light-emitting
+        item on the floor.
+        """
+        body = body_of(self.util, "public static byte[]? NicheLightHsv(")
+        self.assertIn("stack?.Collectible?.GetLightHsv(accessor, null, stack)", body)
+        self.assertNotIn(".Block", body)
 
     def test_the_world_is_asked_to_light_the_pile_again_when_the_niche_changes(self):
-        """GetLightHsv is only consulted when something says the block changed."""
-        body = body_of(self.entity, "private void OnNicheChanged()")
-        self.assertIn("MarkBlockModified(Pos)", body)
+        """The lighting task only re-reads a position's emission when the *block* there changes.
+
+        Putting a torch in a pocket changes the block entity and nothing else, so MarkBlockDirty
+        (redraw) and MarkBlockModified (resend) both leave the pile dark. ExchangeBlock swaps the
+        block for itself without disturbing the block entity, and that swap is the change the
+        lighting task is waiting for — the same nudge BlockEntityGroundStorage.LightUpdate gives.
+        """
+        body = body_of(self.entity, "private void UpdateNicheLight()")
+        self.assertIn("ExchangeBlock(Block.Id, Pos)", body)
+
+        # Re-reading a position that no longer emits does not undo light already spread from it.
+        self.assertIn("RemoveBlockLight", body)
+
+        self.assertIn("UpdateNicheLight();", body_of(self.entity, "private void OnNicheChanged()"))
         for method in ("public bool PutInNiche(", "public bool TakeFromNiche(", "private void ShedNiche()"):
             with self.subTest(method=method):
                 self.assertIn("OnNicheChanged();", body_of(self.entity, method))
+
+    def test_a_pile_that_is_about_to_go_hands_its_light_back(self):
+        """RemoveBlockLight has to be called while the block entity is still there — once the block
+        is gone there is nothing left to ask what it had been giving off."""
+        self.assertIn("ClearNicheLight();", body_of(self.entity, "public bool OnPlayerInteract("))
+        self.assertIn("ClearNicheLight()", body_of(self.block, "public override void OnBlockBroken("))
 
     def test_breaking_the_pile_gives_the_niche_item_back(self):
         body = body_of(self.block, "public override ItemStack[] GetDrops(")
@@ -252,11 +285,37 @@ class TestItemsArePosedAsThingsOnAShelf(unittest.TestCase):
 class TestOnlyTheNicheCairnHasOne(unittest.TestCase):
     def test_the_layout_decides_it_in_one_place(self):
         util = UTIL.read_text()
-        self.assertIn("public static bool HasNiche(RockPileLayoutMode mode)", util)
+        self.assertIn("public static bool HasNiche(RockPileLayoutMode mode, int segment)", util)
         self.assertIn("mode == RockPileLayoutMode.NicheCairn", util)
 
         entity = ENTITY.read_text()
-        self.assertIn("public bool HasNiche => RockPileUtil.HasNiche(layoutMode);", entity)
+        self.assertIn("public bool HasNiche => RockPileUtil.HasNiche(layoutMode, segmentIndex);", entity)
+
+    def test_the_pocket_is_a_course_up_the_column_and_not_the_footing(self):
+        """A pocket at ground level is a pocket you kneel to, so the niche goes in the middle of
+        the cairn: plain footing under it, spire over it, socket between.
+
+        Both sides have to agree on which course that is — the generator cuts the stones out of one
+        profile and the block entity decides which height wears it — so the two constants are
+        checked against each other rather than trusted to stay in step.
+        """
+        util = UTIL.read_text()
+        self.assertIn("public const int NicheSegment = 1;", util)
+        self.assertIn("NICHE_SEGMENT = 1", (ROOT / "tools/rockpile_geometry.py").read_text())
+
+        # The footing and the spire of a niche cairn are the plain cairn profiles.
+        forMode = body_of(util, "public RockPileSlotTransform[] ForMode(")
+        self.assertIn("RockPileUtil.NicheSegment => NicheCairn", forMode)
+        self.assertIn("0 => Cairn0", forMode)
+
+    def test_a_heap_will_not_carry_a_pile(self):
+        """Stone tipped on the ground is not laid on anything, so nothing may be laid on it."""
+        util = UTIL.read_text()
+        self.assertIn("CanBearLoad(RockPileLayoutMode mode) => mode != RockPileLayoutMode.Heap", util)
+        self.assertIn(
+            "RockPileUtil.CanBearLoad(pile.LayoutMode)",
+            body_of(BLOCK.read_text(), "public override bool CanAttachBlockAt("),
+        )
 
         # Nothing else may decide for itself what counts as a niche layout.
         for source in (ENTITY, BLOCK):

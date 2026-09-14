@@ -430,16 +430,21 @@ class TestCommittedConfig(unittest.TestCase):
         the radius the cairn's own profile gives it, and a count that is the cairn's count less
         whatever the pocket cuts out of it. That is what makes a pocket cairn among plain ones read
         as the same kind of pile.
+
+        The profile it borrows is ``NICHE_PROFILE``'s — the footing's rings — even though
+        ``NICHE_SEGMENT`` puts the course a block up. The body profile has no circumference to
+        spare: cutting a mouth wide enough to stand a torch in empties whole courses of it, which
+        is a hole through a cairn rather than a socket in one.
         """
         niche = courses_of(self.layouts["nichecairn"])
-        rings = geo.cairn_rings(0)
+        rings = geo.cairn_rings(geo.NICHE_PROFILE)
         self.assertEqual(len(niche), len(rings))
 
         for layer, (height, course) in enumerate(sorted(niche.items())):
             count, radius = rings[layer]
             with self.subTest(course=layer):
-                # Every stone on that course sits on the cairn's own radius for it. The two bridging
-                # stones over the mouth are the exception and are pulled in slightly.
+                # Every stone on that course sits on the cairn's own radius for it. The lintel over
+                # the mouth is the exception and is pulled in slightly.
                 on_ring = [
                     s for s in course
                     if abs(math.hypot(s["x"] - 0.5, s["z"] - 0.5) - radius) < 1e-3

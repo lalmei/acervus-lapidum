@@ -97,7 +97,7 @@ CAIRN_SEGMENTS = 3
 # the segment above it hangs in mid-air — the fault that made stacked cairns look wrong. Steps is
 # not here on purpose: a flight is meant to be short at the front, and a loaded one swaps onto the
 # masonry slots instead, which do fill the block.
-STACKING_LAYOUTS = frozenset({"wall", "masonry"}) | {
+STACKING_LAYOUTS = frozenset({"wall", "masonry", "nichecairn"}) | {
     f"cairn{i}" for i in range(CAIRN_SEGMENTS)
 }
 
@@ -751,6 +751,32 @@ def build_arrow(rng):
 
 # The pocket faces +Z, so the pile's own turn aims it wherever you want it.
 NICHE_BEARING = 90.0
+
+# Which course up a cairn the pocket is cut into: the second, not the footing.
+#
+# A pocket at ground level is a pocket you kneel to. A cairn is built to be read while walking
+# past, and the thing you stand in it — a torch, a flower, a skull — belongs at the height it can
+# be seen at, which is the middle of the column rather than its foot. So a niche cairn is a cairn
+# all the way up with one course of it opened: plain footing below, spire above, socket between.
+#
+# The block entity holds the other half of this — see RockPileUtil.NicheSegment — since a pile
+# only knows how far up a column it sits at runtime.
+NICHE_SEGMENT = 1
+
+# The rings are the footing profile's even though the course sits at segment 1, which is the one
+# place this layout departs from "the cairn with stones left out".
+#
+# It has to. A pocket is a hole with cairn either side of it, and the body profile has no room for
+# both: its rings are 3.2px and 2.4px in radius while a stone is 5px long and laid tangentially, so
+# the two survivors either side of a gap still reach clean across it. Cutting hard enough to clear
+# the mouth empties whole courses instead, which is a hole *through* a cairn rather than a socket
+# in one. On the footing's rings of six and five there is circumference to spare, so the stones
+# close again either side of the opening.
+#
+# What it costs is the taper: a cairn with a socket in it goes wide, wide, narrow rather than wide,
+# middling, narrow. That reads as a drum with a niche built into it, which is what it is.
+NICHE_PROFILE = 0
+
 # Sized to read as somewhere you would stand a torch. At 52 degrees over three courses the pocket
 # came out roughly 8px by 6px — a pocket, but visibly smaller than the thing it is for.
 #
@@ -767,7 +793,7 @@ NICHE_LAYERS = (1, 2, 3, 4, 5)
 
 
 def build_niche_cairn(rng):
-    """The cairn footing with a pocket cut into one face, and a stone bridging its mouth.
+    """A cairn course with a pocket cut into one face, and a stone bridging its mouth.
 
     The rings, their radii and their half-stone phase advance are ``build_cairn``'s own — this is
     that layout with an opening in it, not a new shape, so a pocket cairn in a row of plain ones
@@ -775,14 +801,15 @@ def build_niche_cairn(rng):
     not laid, and the course above carries a stone across its mouth: without that the pocket reads
     as a hole where somebody forgot a rock rather than as something built on purpose.
 
-    One profile rather than the cairn's three. A pocket belongs at the foot, where you can reach
-    into it; a segment stacked above this one is an ordinary cairn course.
+    One profile rather than the cairn's three, and it is the course that goes *into* a cairn:
+    ``NICHE_SEGMENT`` says which height wears it, and the footing under it and the spire over it
+    are ordinary cairn segments, which is why this builds only the one they sandwich.
     """
     slots = []
     phase = rng.uniform(0, math.tau)
     widest = ring_radius(max(CAIRN_PROFILES[0]))
 
-    for layer, (count, radius) in enumerate(cairn_rings(0)):
+    for layer, (count, radius) in enumerate(cairn_rings(NICHE_PROFILE)):
         if layer > 0:
             phase += math.pi / count
         for i in range(count):
@@ -803,7 +830,7 @@ def build_niche_cairn(rng):
 
     # The stone across the mouth, laid flat on the course above the opening.
     top = max(NICHE_LAYERS) + 1
-    radius = cairn_rings(0)[top][1]
+    radius = cairn_rings(NICHE_PROFILE)[top][1]
     for dx in (-STONE_LENGTH / 2 + 0.01, STONE_LENGTH / 2 - 0.01):
         slots.append(slot(0.5 + dx, top * STONE_HEIGHT, 0.5 + radius * 0.92,
                           rng.uniform(-3.0, 3.0), 0, rng.uniform(-2.0, 2.0)))
