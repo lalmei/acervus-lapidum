@@ -127,6 +127,45 @@ public class BlockEntityRockPile : BlockEntityDisplay
         }
     }
 
+    /// <summary>
+    /// What kinds of stone are in the pile, most numerous first, as "12 x Granite".
+    ///
+    /// Grouped by collectible code rather than by stack: a slot holds exactly one stone, so
+    /// counting stacks is counting slots. The rock type is the part worth saying out loud — a
+    /// cairn thrown together from whatever was underfoot is a different thing from one built of
+    /// quarried granite, and at this mesh size you cannot tell them apart by looking.
+    /// </summary>
+    private string? StoneKindSummary()
+    {
+        var kinds = new Dictionary<string, (string Name, int Count)>();
+        foreach (var slot in StoneSlots)
+        {
+            if (slot.Itemstack is not { } stack)
+            {
+                continue;
+            }
+
+            var name = stack.GetName();
+            var key = stack.Collectible?.Code?.ToString() ?? name;
+            kinds[key] = kinds.TryGetValue(key, out var seen)
+                ? (seen.Name, seen.Count + 1)
+                : (name, 1);
+        }
+
+        if (kinds.Count == 0)
+        {
+            return null;
+        }
+
+        return string.Join(
+            ", ",
+            kinds.Values
+                .OrderByDescending(kind => kind.Count)
+                .ThenBy(kind => kind.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(kind => Lang.Get(
+                    "acervuslapidum:blockinfo-rockpile-stone-kind", kind.Count, kind.Name)));
+    }
+
     private ItemSlot NicheSlot => inventory[RockPileUtil.NicheSlotIndex];
 
     /// <summary>What is standing in the niche, if this pile has one and anything is in it.</summary>
@@ -955,6 +994,12 @@ public class BlockEntityRockPile : BlockEntityDisplay
     {
         var count = StoneCount;
         dsc.AppendLine(Lang.Get("acervuslapidum:blockinfo-rockpile-count", count, SlotCount));
+
+        if (StoneKindSummary() is { } kinds)
+        {
+            dsc.AppendLine(Lang.Get("acervuslapidum:blockinfo-rockpile-stones", kinds));
+        }
+
         dsc.AppendLine(Lang.Get(
             "acervuslapidum:blockinfo-rockpile-layout",
             Lang.Get("acervuslapidum:rockpile-layout-" + layoutMode.ToString().ToLowerInvariant())));

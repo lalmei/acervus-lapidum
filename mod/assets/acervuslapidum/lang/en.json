@@ -32,6 +32,8 @@
   "hotkey-rockpile-layout": "Choose rock pile layout",
 
   "blockinfo-rockpile-count": "{0} of {1} stones",
+  "blockinfo-rockpile-stones": "Stone: {0}",
+  "blockinfo-rockpile-stone-kind": "{0} \u00d7 {1}",
   "blockinfo-rockpile-layout": "Laid as: {0}",
   "blockinfo-rockpile-full": "Full — place a stone on top to start the next course",
   "blockinfo-rockpile-full-loose": "Full — tipped stone will not carry another course. Lay it as something else to build up.",
