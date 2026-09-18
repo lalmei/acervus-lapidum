@@ -1,0 +1,78 @@
+# After a GitHub Release is published, bump the patch version on main so the
+# next draft is already named for the following version.
+#
+# A GITHUB_TOKEN push does not start other workflows, so this job also runs
+# Release Drafter itself. The zip for that draft is attached by the usual CI
+# the next time a human merge hits main.
+name: Post-release version bump
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: post-release-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Patch-bump main for the next draft
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+
+      - name: Install bump-my-version
+        run: uv tool install bump-my-version
+
+      - name: Bump the patch version
+        id: bump
+        shell: bash
+        env:
+          RELEASED_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          current="$(bump-my-version show current_version)"
+          released="${RELEASED_TAG#v}"
+          if [[ "${{ github.event_name }}" == "release" && "$current" != "$released" ]]; then
+            echo "main is already $current; published $released. Skipping."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bump-my-version bump patch
+          next="$(bump-my-version show current_version)"
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Commit as github-actions[bot] and push to main
+        if: steps.bump.outputs.skipped != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u
+          git commit -m "🔖 chore: bump version to ${{ steps.bump.outputs.version }}"
+          git push --force-with-lease origin HEAD:refs/heads/main
+
+      - name: Open the next release draft
+        if: steps.bump.outputs.skipped != 'true'
+        uses: release-drafter/release-drafter@v7
+        with:
+          version: ${{ steps.bump.outputs.version }}
+          disable-autolabeler: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
