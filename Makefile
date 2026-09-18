@@ -28,6 +28,10 @@ MOD_VERSION = $(shell perl -0ne 'print $$1 if /"version":\s*"([0-9]+\.[0-9]+\.[0
 PACKAGE_FILE = $(DIST_DIR)/AcervusLapidum-$(MOD_VERSION).zip
 UV ?= uv
 UV_RUN := $(UV) run
+# Version files are listed in .bumpversion.toml. Install once:
+#   uv tool install bump-my-version
+BUMP ?= bump-my-version
+PART ?= patch
 
 # The layout config is generated from the game's own stone shapes, then committed. Builds,
 # packaging, and CI consume the committed file — only `make assets` reads the install.
@@ -96,38 +100,27 @@ run:
 
 deploy-run: deploy run
 
-# The version lives in two source files that must never drift: modinfo.json is what the game
-# and ModDB read, AcervusLapidumModMetadata.Version is what the mod logs about itself. Bump
-# both together — along with the version a bug report asks for, so the issue template never
-# invites players to name a version that no longer exists — then install so the running game
-# reports the new number. Installing rather
-# than deploying is what stops deploy's own patch bump from landing on top of this one.
+# The version lives in files listed in .bumpversion.toml. Installing rather than
+# deploying is what stops deploy's own patch bump from landing on top of this one.
 # Re-invoke make after rewriting the version so PACKAGE_FILE picks up the new number.
-bump-version: bump-version-files
+bump-version-files:
+	@if [[ -n "$(VERSION)" ]]; then \
+		if ! [[ "$(VERSION)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then printf "VERSION must look like 0.2.1\n"; exit 2; fi; \
+		$(BUMP) bump --new-version "$(VERSION)"; \
+	else \
+		$(BUMP) bump $(PART); \
+	fi
+	@printf "Bumped Acervus Lapidum source version to $$($(BUMP) show current_version)\n"
+
+bump-version:
+	@if [[ -z "$(VERSION)" ]]; then printf "Usage: make bump-version VERSION=0.3.0\n"; exit 2; fi
+	@$(MAKE) bump-version-files VERSION="$(VERSION)"
 	@$(MAKE) install
 
-bump-version-files:
-	@if [[ -z "$(VERSION)" ]]; then printf "Usage: make bump-version VERSION=0.2.1\n"; exit 2; fi
-	@if ! [[ "$(VERSION)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then printf "VERSION must look like 0.2.1\n"; exit 2; fi
-	@perl -0pi -e 's/"version":\s*"[^"]+"/"version": "$(VERSION)"/' mod/modinfo.json
-	@perl -0pi -e 's/public const string Version = "[^"]+";/public const string Version = "$(VERSION)";/' mod/src/AcervusLapidumModMetadata.cs
-	@game_version=$$(perl -0ne 'print $$1 if /"game":\s*"([0-9]+\.[0-9]+\.[0-9]+)"/' mod/modinfo.json); \
-	for f in .github/ISSUE_TEMPLATE/*.yml; do \
-		perl -0pi -e 's/(id: mod-version.*?placeholder:\s*)v?[0-9]+\.[0-9]+\.[0-9]+/$${1}v$(VERSION)/s' "$$f"; \
-		GAME_VERSION="$$game_version" perl -0pi -e 's/(id: game-version.*?placeholder:\s*)v?[0-9]+\.[0-9]+\.[0-9]+/$${1}v$$ENV{GAME_VERSION}/s' "$$f"; \
-	done
-	@printf "Bumped Acervus Lapidum source version to $(VERSION)\n"
-
 bump-minor-version:
-	@current=$$(perl -0ne 'print $$1 if /"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"/' mod/modinfo.json); \
-	if [[ -z "$$current" ]]; then printf "Could not read version from mod/modinfo.json\n"; exit 2; fi; \
-	parts=("$${(@s:.:)current}"); \
-	new_version="$$parts[1].$$(( $$parts[2] + 1 )).0"; \
-	$(MAKE) bump-version VERSION=$$new_version
+	@$(MAKE) bump-version-files PART=minor
+	@$(MAKE) install
 
 bump-patch-version:
-	@current=$$(perl -0ne 'print $$1 if /"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"/' mod/modinfo.json); \
-	if [[ -z "$$current" ]]; then printf "Could not read version from mod/modinfo.json\n"; exit 2; fi; \
-	parts=("$${(@s:.:)current}"); \
-	new_version="$$parts[1].$$parts[2].$$(( $$parts[3] + 1 ))"; \
-	$(MAKE) bump-version VERSION=$$new_version
+	@$(MAKE) bump-version-files PART=patch
+	@$(MAKE) install

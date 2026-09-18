@@ -1,0 +1,33 @@
+# Version files for Acervus Lapidum. Install once: uv tool install bump-my-version
+# Committing and tagging stay manual — this repository is worked through GitButler.
+# pyproject.toml's project.version is the Python tools package, not the mod.
+
+[tool.bumpversion]
+current_version = "0.4.3"
+parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
+serialize = ["{major}.{minor}.{patch}"]
+search = "{current_version}"
+replace = "{new_version}"
+commit = false
+tag = false
+allow_dirty = true
+
+[[tool.bumpversion.files]]
+filename = "mod/modinfo.json"
+search = "\"version\": \"{current_version}\""
+replace = "\"version\": \"{new_version}\""
+
+[[tool.bumpversion.files]]
+filename = "mod/src/AcervusLapidumModMetadata.cs"
+search = "public const string Version = \"{current_version}\";"
+replace = "public const string Version = \"{new_version}\";"
+
+[[tool.bumpversion.files]]
+filename = ".github/ISSUE_TEMPLATE/bug_report.yml"
+search = "label: Mod Version\n      description: What Acervus Lapidum version were you using?\n      placeholder: v{current_version}"
+replace = "label: Mod Version\n      description: What Acervus Lapidum version were you using?\n      placeholder: v{new_version}"
+
+[[tool.bumpversion.files]]
+filename = ".github/ISSUE_TEMPLATE/feature_request.yml"
+search = "label: Mod Version\n      description: What Acervus Lapidum version are you using?\n      placeholder: v{current_version}"
+replace = "label: Mod Version\n      description: What Acervus Lapidum version are you using?\n      placeholder: v{new_version}"
